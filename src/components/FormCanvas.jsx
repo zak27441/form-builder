@@ -1,10 +1,17 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom'; 
-import { Menu, Settings, ChevronDown, Calendar, MapPin, X, AlertTriangle, Info, Trash2, AlertCircle, Plus } from 'lucide-react'; // Added Plus
+import { Menu, Settings, ChevronDown, Calendar, MapPin, X, AlertTriangle, Info, Trash2, AlertCircle, Plus, Check } from 'lucide-react'; // Added Check
 import { useAutoAnimate } from '@formkit/auto-animate/react';
 import ContextMenu from './ContextMenu';
 import TreeNavigation from './TreeNavigation';
 import { cn } from '../utils/cn';
+
+const FIELD_TYPES = [
+  "Text field", "Currency", "Text area", 
+  "Dropdown", "Radio buttons", "Checkbox", "Heading", 
+  "Fixed text", "Calendar", "Address group", "Repeater", 
+  "Sort code", "Account number", "Phone number"
+];
 
 // Helper to determine if a field can be a trigger
 const isValidTrigger = (field) => {
@@ -98,120 +105,76 @@ const ConditionalLogicModal = ({ triggerField, currentCondition, onClose, onSave
     }
 
     return createPortal(
-        <div className="fixed inset-0 z-[10001] flex items-center justify-center">
+        <div className="fixed inset-0 z-[10001] flex items-center justify-center p-4">
             <div className="absolute inset-0 bg-black/20 backdrop-blur-sm" onClick={onClose} />
-            <div className="bg-white rounded-lg shadow-2xl border border-gray-200 w-96 overflow-hidden animate-in zoom-in-95 duration-200 relative z-10">
-                <div className="px-4 py-3 border-b border-gray-100 flex justify-between items-center bg-gray-50">
-                    <h3 className="font-semibold text-sm text-gray-800">Conditional Logic</h3>
-                    <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X size={16}/></button>
+            <div className="bg-white rounded-xl shadow-2xl border border-gray-200 w-[400px] overflow-hidden animate-in zoom-in-95 duration-200 relative z-10 flex flex-col max-h-[90vh]">
+                
+                {/* Header */}
+                <div className="px-5 py-4 border-b border-gray-100 flex justify-between items-center bg-white shrink-0">
+                    <div className="flex flex-col gap-0.5">
+                        <h3 className="font-bold text-base text-gray-900">Configure Logic</h3>
+                        <div className="flex items-center gap-1.5 text-xs text-gray-500">
+                            <span>Trigger:</span>
+                            <span className="font-medium text-gray-900 bg-gray-100 px-1.5 py-0.5 rounded border border-gray-200 max-w-[200px] truncate">
+                                {triggerField.label}
+                            </span>
+                        </div>
+                    </div>
+                    <button 
+                        onClick={onClose} 
+                        className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition-colors"
+                    >
+                        <X size={18}/>
+                    </button>
                 </div>
-                <div className="p-4">
+
+                {/* Body */}
+                <div className="p-5 overflow-y-auto custom-scrollbar">
                     {currentCondition && currentCondition.triggerId !== triggerField.id && (
-                        <div className="mb-3 p-2 bg-yellow-50 border border-yellow-100 rounded text-xs text-yellow-700">
-                            Warning: This will override the existing condition.
+                        <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg flex gap-2 text-xs text-amber-800">
+                            <AlertTriangle size={14} className="mt-0.5 flex-shrink-0" />
+                            <span>Warning: This will replace the existing condition.</span>
                         </div>
                     )}
-                    <p className="text-xs text-gray-500 mb-3">
-                        Triggering on: <span className="font-medium text-gray-700">{triggerField.label}</span>
-                    </p>
 
                     {/* Number Logic */}
                     {isNumber && (
-                        <div className="flex flex-col gap-3">
-                            <select 
-                                className="w-full text-sm border border-gray-300 rounded px-2 py-1.5"
-                                value={logicType}
-                                onChange={(e) => setLogicType(e.target.value)}
-                            >
-                                <option value="greater_than">Greater than</option>
-                                <option value="less_than">Less than</option>
-                                <option value="between">Between</option>
-                                <option value="outside_range">Outside of range</option>
-                            </select>
-                            <input 
-                                type="number" 
-                                placeholder="Value"
-                                className="w-full text-sm border border-gray-300 rounded px-2 py-1.5"
-                                value={value1}
-                                onChange={(e) => setValue1(e.target.value)}
-                            />
+                        <div className="flex flex-col gap-4">
+                            <div className="space-y-1.5">
+                                <label className="text-xs font-semibold text-gray-700">Condition Rule</label>
+                                <div className="relative">
+                                    <select 
+                                        className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 bg-white transition-all"
+                                        value={logicType}
+                                        onChange={(e) => setLogicType(e.target.value)}
+                                    >
+                                        <option value="greater_than">Greater than</option>
+                                        <option value="less_than">Less than</option>
+                                        <option value="between">Between</option>
+                                        <option value="outside_range">Outside of range</option>
+                                    </select>
+                                    <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"/>
+                                </div>
+                            </div>
+                            
+                            <div className="space-y-1.5">
+                                <label className="text-xs font-semibold text-gray-700">Value</label>
+                                <input 
+                                    type="number" 
+                                    placeholder="Enter value..."
+                                    className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all placeholder:text-gray-400"
+                                    value={value1}
+                                    onChange={(e) => setValue1(e.target.value)}
+                                />
+                            </div>
+
                             {(logicType === 'between' || logicType === 'outside_range') && (
-                                <input 
-                                    type="number" 
-                                    placeholder="Second Value"
-                                    className="w-full text-sm border border-gray-300 rounded px-2 py-1.5"
-                                    value={value2}
-                                    onChange={(e) => setValue2(e.target.value)}
-                                />
-                            )}
-                        </div>
-                    )}
-
-                    {/* Choice Logic */}
-                    {isChoice && (
-                        <div className="flex flex-col gap-2 max-h-48 overflow-y-auto">
-                            <p className="text-xs font-medium text-gray-700">Select triggering options:</p>
-                            {(triggerField.options || []).map((opt, idx) => (
-                                <label key={idx} className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer hover:bg-gray-50 p-1 rounded">
-                                    <input 
-                                        type="checkbox" 
-                                        checked={selectedOptions.includes(opt)}
-                                        onChange={() => handleOptionToggle(opt)}
-                                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                                    />
-                                    {opt}
-                                </label>
-                            ))}
-                        </div>
-                    )}
-
-                    {/* Calendar Logic */}
-                    {isCalendar && (
-                        <div className="flex flex-col gap-3">
-                            <select 
-                                className="w-full text-sm border border-gray-300 rounded px-2 py-1.5"
-                                value={logicType}
-                                onChange={(e) => setLogicType(e.target.value)}
-                            >
-                                <option value="x_years_ago">X years ago from today</option>
-                                <option value="before_date">Before date</option>
-                                <option value="between_years">Between X and Y years ago</option>
-                                <option value="after_date">After date</option>
-                                <option value="more_than_years">More than X years from today</option>
-                            </select>
-                            
-                            {['x_years_ago', 'more_than_years'].includes(logicType) && (
-                                <input 
-                                    type="number" 
-                                    placeholder="Years"
-                                    className="w-full text-sm border border-gray-300 rounded px-2 py-1.5"
-                                    value={value1}
-                                    onChange={(e) => setValue1(e.target.value)}
-                                />
-                            )}
-                            
-                            {['before_date', 'after_date'].includes(logicType) && (
-                                <input 
-                                    type="date" 
-                                    className="w-full text-sm border border-gray-300 rounded px-2 py-1.5"
-                                    value={value1}
-                                    onChange={(e) => setValue1(e.target.value)}
-                                />
-                            )}
-
-                            {logicType === 'between_years' && (
-                                <div className="flex gap-2">
+                                <div className="space-y-1.5">
+                                    <label className="text-xs font-semibold text-gray-700">Second Value</label>
                                     <input 
                                         type="number" 
-                                        placeholder="Min Years"
-                                        className="w-1/2 text-sm border border-gray-300 rounded px-2 py-1.5"
-                                        value={value1}
-                                        onChange={(e) => setValue1(e.target.value)}
-                                    />
-                                    <input 
-                                        type="number" 
-                                        placeholder="Max Years"
-                                        className="w-1/2 text-sm border border-gray-300 rounded px-2 py-1.5"
+                                        placeholder="Enter second value..."
+                                        className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all placeholder:text-gray-400"
                                         value={value2}
                                         onChange={(e) => setValue2(e.target.value)}
                                     />
@@ -220,20 +183,135 @@ const ConditionalLogicModal = ({ triggerField, currentCondition, onClose, onSave
                         </div>
                     )}
 
-                    <div className="mt-4 flex justify-end gap-2">
-                        <button 
-                            onClick={onClose}
-                            className="px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-100 rounded"
-                        >
-                            Cancel
-                        </button>
-                        <button 
-                            onClick={handleSaveClick}
-                            className="px-3 py-1.5 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 rounded shadow-sm"
-                        >
-                            Save Condition
-                        </button>
-                    </div>
+                    {/* Choice Logic */}
+                    {isChoice && (
+                        <div className="flex flex-col gap-3">
+                            <div className="flex justify-between items-center">
+                                <label className="text-xs font-semibold text-gray-700">Select Trigger Option(s)</label>
+                                <span className="text-[10px] text-gray-400">Select multiple if needed</span>
+                            </div>
+                            
+                            <div className="border border-gray-200 rounded-lg overflow-hidden divide-y divide-gray-100 max-h-[240px] overflow-y-auto custom-scrollbar bg-white">
+                                {(triggerField.options || []).map((opt, idx) => {
+                                    const isChecked = selectedOptions.includes(opt);
+                                    return (
+                                        <label 
+                                            key={idx} 
+                                            className={cn(
+                                                "flex items-center gap-3 px-3 py-2.5 cursor-pointer transition-colors text-sm group select-none",
+                                                isChecked ? "bg-blue-50/50" : "hover:bg-gray-50"
+                                            )}
+                                        >
+                                            <div className={cn(
+                                                "w-4 h-4 rounded border flex items-center justify-center transition-all flex-shrink-0",
+                                                isChecked ? "bg-blue-600 border-blue-600" : "border-gray-300 bg-white group-hover:border-blue-400"
+                                            )}>
+                                                <input 
+                                                    type="checkbox" 
+                                                    className="hidden"
+                                                    checked={isChecked}
+                                                    onChange={() => handleOptionToggle(opt)}
+                                                />
+                                                {isChecked && <Check size={10} className="text-white stroke-[3]" />}
+                                            </div>
+                                            <span className={cn("transition-colors break-words", isChecked ? "text-blue-900 font-medium" : "text-gray-600")}>
+                                                {opt}
+                                            </span>
+                                        </label>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Calendar Logic */}
+                    {isCalendar && (
+                        <div className="flex flex-col gap-4">
+                            <div className="space-y-1.5">
+                                <label className="text-xs font-semibold text-gray-700">Date Condition</label>
+                                <div className="relative">
+                                    <select 
+                                        className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 bg-white transition-all"
+                                        value={logicType}
+                                        onChange={(e) => setLogicType(e.target.value)}
+                                    >
+                                        <option value="x_years_ago">X years ago from today</option>
+                                        <option value="before_date">Before date</option>
+                                        <option value="between_years">Between X and Y years ago</option>
+                                        <option value="after_date">After date</option>
+                                        <option value="more_than_years">More than X years from today</option>
+                                    </select>
+                                    <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"/>
+                                </div>
+                            </div>
+                            
+                            {['x_years_ago', 'more_than_years'].includes(logicType) && (
+                                <div className="space-y-1.5">
+                                    <label className="text-xs font-semibold text-gray-700">Years</label>
+                                    <input 
+                                        type="number" 
+                                        placeholder="Enter number of years..."
+                                        className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all placeholder:text-gray-400"
+                                        value={value1}
+                                        onChange={(e) => setValue1(e.target.value)}
+                                    />
+                                </div>
+                            )}
+                            
+                            {['before_date', 'after_date'].includes(logicType) && (
+                                <div className="space-y-1.5">
+                                    <label className="text-xs font-semibold text-gray-700">Target Date</label>
+                                    <input 
+                                        type="date" 
+                                        className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all text-gray-600"
+                                        value={value1}
+                                        onChange={(e) => setValue1(e.target.value)}
+                                    />
+                                </div>
+                            )}
+
+                            {logicType === 'between_years' && (
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div className="space-y-1.5">
+                                        <label className="text-xs font-semibold text-gray-700">Min Years</label>
+                                        <input 
+                                            type="number" 
+                                            placeholder="Min"
+                                            className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                                            value={value1}
+                                            onChange={(e) => setValue1(e.target.value)}
+                                        />
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        <label className="text-xs font-semibold text-gray-700">Max Years</label>
+                                        <input 
+                                            type="number" 
+                                            placeholder="Max"
+                                            className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                                            value={value2}
+                                            onChange={(e) => setValue2(e.target.value)}
+                                        />
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </div>
+
+                {/* Footer */}
+                <div className="px-5 py-4 border-t border-gray-100 bg-gray-50/50 flex justify-end gap-3 shrink-0">
+                    <button 
+                        onClick={onClose}
+                        className="px-4 py-2 text-xs font-semibold text-gray-600 hover:text-gray-800 hover:bg-gray-200/50 rounded-lg transition-colors"
+                    >
+                        Cancel
+                    </button>
+                    <button 
+                        onClick={handleSaveClick}
+                        className="px-4 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm shadow-blue-200 transition-all active:scale-95"
+                    >
+                        Save Condition
+                    </button>
                 </div>
             </div>
         </div>,
@@ -269,7 +347,7 @@ const updateFieldTree = (fields, parentId, updateFn) => {
 const FormFieldItem = ({ 
     field, 
     index, 
-    parentId = null, // New prop
+    parentId = null, 
     onOpenMenu, 
     onDragStart, 
     isActive, 
@@ -280,7 +358,8 @@ const FormFieldItem = ({
     allFields, 
     onOrphanEnter, 
     onOrphanLeave,
-    onAddChild // New prop for repeater
+    onAddChild, 
+    onOpenTypeMenu
 }) => {
   const isDragging = draggingId === field.id;
   const isHeading = field.type.toLowerCase() === 'heading';
@@ -293,11 +372,19 @@ const FormFieldItem = ({
   const isUnselectable = selectionMode && (!validTrigger || isSelf);
   
   // In selection mode, determine styling
-  const selectionStyle = selectionMode 
-    ? (!isUnselectable
-        ? "cursor-pointer hover:ring-2 hover:ring-blue-400 hover:bg-blue-50" 
-        : "opacity-60 cursor-not-allowed grayscale bg-gray-200") 
-    : "";
+  let selectionStyle = "";
+  if (selectionMode) {
+    if (!isUnselectable) {
+        selectionStyle = "cursor-pointer hover:ring-2 hover:ring-blue-400 hover:bg-blue-50";
+    } else {
+        if (isRepeater) {
+             // Special case for repeaters: Grey background but NO opacity/grayscale so children are visible
+             selectionStyle = "bg-gray-200";
+        } else {
+             selectionStyle = "opacity-60 cursor-not-allowed grayscale bg-gray-200";
+        }
+    }
+  }
 
   const inputBg = isUnselectable ? "bg-gray-200" : "bg-white";
 
@@ -330,15 +417,25 @@ const FormFieldItem = ({
     const type = field.type.toLowerCase();
     switch (type) {
         case 'repeater': 
+            const buttonLabel = field.repeaterButtonLabel || "+ Add";
             return (
-                <div className="flex flex-col gap-3 mt-3">
+                <div className="flex flex-col gap-1 mt-1">
                     <div 
                         ref={parentRef}
-                        className="flex flex-col gap-2 p-4 border border-gray-200 rounded-lg bg-gray-50/50 min-h-[60px]"
+                        className={cn(
+                            "flex flex-col gap-1 p-2 border border-gray-600 rounded-lg min-h-[60px]",
+                            inputBg // Use dynamic background
+                        )}
+                        onClick={(e) => {
+                            if ((field.children || []).length === 0) {
+                                e.stopPropagation();
+                                if (onOpenTypeMenu) onOpenTypeMenu(field.id, e.clientX, e.clientY);
+                            }
+                        }}
                     >
                         {(field.children || []).length === 0 && (
-                            <div className="text-center text-xs text-gray-400 italic py-2">
-                                No fields yet
+                            <div className="text-center text-xs text-gray-400 italic py-2 cursor-pointer hover:text-gray-600 transition-colors">
+                                Click to add first field
                             </div>
                         )}
                         
@@ -351,27 +448,24 @@ const FormFieldItem = ({
                                 onOpenMenu={onOpenMenu}
                                 onDragStart={onDragStart}
                                 draggingId={draggingId}
-                                isActive={isActive} // Note: This might need refined logic if we want to highlight nested items differently
+                                isActive={isActive} 
                                 onUpdateLabel={onUpdateLabel}
                                 selectionMode={selectionMode}
                                 onSelect={onSelect}
-                                allFields={allFields} // We might want to pass flattened fields here if needed for cross-dependency
+                                allFields={allFields} 
                                 onOrphanEnter={onOrphanEnter}
                                 onOrphanLeave={onOrphanLeave}
                                 onAddChild={onAddChild}
+                                onOpenTypeMenu={onOpenTypeMenu}
                             />
                         ))}
                     </div>
                     
                     <button 
-                        onClick={(e) => {
-                            e.stopPropagation(); // Prevent selecting the repeater itself
-                            onAddChild(field.id);
-                        }}
-                        className="self-start flex items-center gap-1.5 px-3 py-1.5 bg-gray-700 hover:bg-gray-800 text-white rounded-full text-xs font-medium transition-colors shadow-sm"
+                        disabled
+                        className="self-start flex items-center gap-1.5 px-3 py-1.5 bg-gray-700 text-white rounded-full text-xs font-medium shadow-sm opacity-90 cursor-default"
                     >
-                        <Plus size={12} />
-                        Repeater
+                        {buttonLabel}
                     </button>
                 </div>
             );
@@ -506,7 +600,7 @@ const FormFieldItem = ({
             >
                 {field.label}
             </div>
-            <div className={cn(selectionMode && "pointer-events-none")}>
+            <div className={cn(selectionMode && !isRepeater && "pointer-events-none")}>
                 {renderInput()}
             </div>
             {field.tiptext && (
@@ -535,6 +629,7 @@ const FormCanvas = ({ fields, setFields }) => {
   const [draggingId, setDraggingId] = useState(null);
   const [activeHeadingId, setActiveHeadingId] = useState(null);
   
+  const [typeMenu, setTypeMenu] = useState({ isOpen: false, parentId: null, x: 0, y: 0 }); // New State
   const [selectionMode, setSelectionMode] = useState(null);
   const [conditionalTriggerField, setConditionalTriggerField] = useState(null);
   const [showWarningOptions, setShowWarningOptions] = useState(false);
@@ -570,7 +665,17 @@ const FormCanvas = ({ fields, setFields }) => {
     const container = e.target;
     const containerRect = container.getBoundingClientRect();
     const isAtBottom = container.scrollHeight - container.scrollTop <= container.clientHeight + 50;
-    const headingFields = fields.filter(f => f.type.toLowerCase() === 'heading');
+    
+    const collectAllHeadings = (list) => {
+        let res = [];
+        list.forEach(f => {
+            if (f.type.toLowerCase() === 'heading') res.push(f);
+            if (f.children) res = res.concat(collectAllHeadings(f.children));
+        });
+        return res;
+    };
+    const headingFields = collectAllHeadings(fields);
+
     if (isAtBottom && headingFields.length > 0) {
         const lastHeading = headingFields[headingFields.length - 1];
         if (lastHeading.id !== activeHeadingId) setActiveHeadingId(lastHeading.id);
@@ -684,52 +789,68 @@ const FormCanvas = ({ fields, setFields }) => {
       setConditionalTriggerField(triggerField);
   };
 
+  // Recursive Save Function
   const handleSaveCondition = (condition) => {
-      setFields(prev => prev.map(f => {
+      const updateDeep = (list) => list.map(f => {
           if (f.id === selectionMode) {
               return { ...f, conditional: condition };
           }
+          if (f.children) {
+              return { ...f, children: updateDeep(f.children) };
+          }
           return f;
-      }));
+      });
+      
+      setFields(prev => updateDeep(prev));
       setSelectionMode(null);
       setConditionalTriggerField(null);
   };
 
-  const handleAddField = (type, position) => { 
-    enableAnimations(true);
-    
-    const newId = Math.max(0, ...JSON.stringify(fields).match(/"id":(\d+)/g)?.map(s => parseInt(s.match(/\d+/)[0])) || [0]) + 1;
-    
-    const newField = {
-      id: newId,
-      label: type.toLowerCase() === 'fixed text' ? "Edit text" : "Question label", 
+  const generateId = (fieldsList) => {
+      const allIds = [];
+      const collectIds = (list) => list.forEach(f => { allIds.push(f.id); if(f.children) collectIds(f.children); });
+      collectIds(fieldsList);
+      return (allIds.length > 0 ? Math.max(...allIds) : 0) + 1;
+  };
+
+  const createNewField = (type, id) => ({
+      id,
+      label: type.toLowerCase() === 'repeater' ? "Repeater label" : (type.toLowerCase() === 'fixed text' ? "Edit text" : "Question label"), 
       type: type.toLowerCase(),
       fma: false,
       mandatory: false,
       maxEntries: 0,
+      repeaterButtonLabel: type.toLowerCase() === 'repeater' ? "+ Add" : undefined,
       numbersOnly: false,
       multiselect: false,
       allowInternational: false,
       bold: false,
       options: type.toLowerCase() === 'checkbox' ? ["Checkbox option"] : ["Option 1", "Option 2", "Option 3"],
-      children: [] // Initialize children array
-    };
+      children: []
+  });
+
+  const handleAddField = (type, position) => { 
+    enableAnimations(true);
+    
+    const newId = generateId(fields);
+    const newField = createNewField(type, newId);
 
     // If adding specifically to a repeater (via button)
     if (position === 'child_of_repeater') {
-        const repeaterId = menuState.fieldId; // We'll hijack menuState.fieldId or pass it differently
+        const repeaterId = menuState.fieldId; 
         setFields(prev => updateFieldTree(prev, repeaterId, (list) => [...list, newField]));
         return;
     }
 
     // Existing "Change type" logic
     if (position === 'change') {
-       // ... existing change logic, but ensure we preserve children if converting TO repeater (optional, or reset)
-       // For now, simple implementation as before:
        setFields(prev => {
-           // We need a deep update for change too
            const deepChange = (list) => list.map(f => {
-               if (f.id === menuState.fieldId) return { ...f, type: type.toLowerCase(), children: f.children || [] };
+               if (f.id === menuState.fieldId) {
+                   // Preserve children if relevant, or existing props
+                   const { children, ...rest } = f;
+                   return { ...newField, id: f.id, children: children || [] }; 
+               }
                if (f.children) return { ...f, children: deepChange(f.children) };
                return f;
            });
@@ -737,11 +858,6 @@ const FormCanvas = ({ fields, setFields }) => {
        });
        return;
     }
-
-    // Standard Add Above/Below
-    // We need to find the parent of the *selected field* (menuState.fieldId)
-    // This is tricky with deep nesting if we don't track the parent in menuState.
-    // For now, let's assume menuState could track parentId, OR we search for the field.
     
     const addRelative = (list) => {
         const idx = list.findIndex(f => f.id === menuState.fieldId);
@@ -751,7 +867,6 @@ const FormCanvas = ({ fields, setFields }) => {
             else newList.splice(idx + 1, 0, newField);
             return newList;
         }
-        // If not found in this list, try children
         return list.map(f => {
             if (f.children) return { ...f, children: addRelative(f.children) };
             return f;
@@ -761,25 +876,16 @@ const FormCanvas = ({ fields, setFields }) => {
     setFields(prev => addRelative(prev));
   };
 
-  // New handler specifically for the "+ Repeater" button inside the card
-  const handleAddChildToRepeater = (repeaterId) => {
+  const handleAddChildToRepeater = (repeaterId, type = "text field") => {
       enableAnimations(true);
-      // Generate ID (Quick/dirty way to ensure uniqueness across tree)
-      const allIds = [];
-      const collectIds = (list) => list.forEach(f => { allIds.push(f.id); if(f.children) collectIds(f.children); });
-      collectIds(fields);
-      const newId = (allIds.length > 0 ? Math.max(...allIds) : 0) + 1;
-
-      const newField = {
-        id: newId,
-        label: "Question label", 
-        type: "text field", // Default type
-        fma: false,
-        mandatory: false,
-        children: []
-      };
-
+      const newId = generateId(fields);
+      const newField = createNewField(type, newId);
       setFields(prev => updateFieldTree(prev, repeaterId, (children) => [...children, newField]));
+      setTypeMenu({ isOpen: false, parentId: null, x: 0, y: 0 });
+  };
+
+  const handleOpenTypeMenu = (parentId, x, y) => {
+      setTypeMenu({ isOpen: true, parentId, x, y });
   };
 
   // Updated Delete Handler - Opens Modal
@@ -896,10 +1002,87 @@ const FormCanvas = ({ fields, setFields }) => {
       setHoveredOrphan(null);
   };
 
+  // Logic to reorder entire sections via the TreeNavigation
+  const handleReorderSections = (sourceId, targetId) => {
+      setFields(prevFields => {
+          // Recursive function to find the list containing both headings and perform the move
+          const updateList = (list) => {
+              const sourceIndex = list.findIndex(f => f.id === sourceId);
+              const targetIndex = list.findIndex(f => f.id === targetId);
+
+              // Check if both headings exist at this level
+              if (sourceIndex !== -1 && targetIndex !== -1) {
+                  // 1. Identify all heading indices to define section boundaries
+                  const headingIndices = list
+                      .map((f, i) => f.type.toLowerCase() === 'heading' ? i : -1)
+                      .filter(i => i !== -1);
+                  
+                  // 2. Determine the range of the Source Section
+                  // Starts at sourceIndex. Ends at the next heading or end of list.
+                  const sourceHeadingRank = headingIndices.indexOf(sourceIndex);
+                  const sourceNextHeadingIndex = (sourceHeadingRank + 1 < headingIndices.length) 
+                      ? headingIndices[sourceHeadingRank + 1] 
+                      : list.length;
+                  
+                  // Extract the section items
+                  const sectionToMove = list.slice(sourceIndex, sourceNextHeadingIndex);
+
+                  // 3. Remove the Source Section from the list
+                  const listWithoutSource = [
+                      ...list.slice(0, sourceIndex),
+                      ...list.slice(sourceNextHeadingIndex)
+                  ];
+
+                  // 4. Calculate Insertion Point in the new list
+                  const newTargetIndex = listWithoutSource.findIndex(f => f.id === targetId);
+                  
+                  let insertIndex;
+                  
+                  if (sourceIndex < targetIndex) {
+                      // Moving DOWN: Insert AFTER the target section
+                      // Find the end of the target section in the trimmed list
+                      const newHeadingIndices = listWithoutSource
+                          .map((f, i) => f.type.toLowerCase() === 'heading' ? i : -1)
+                          .filter(i => i !== -1);
+                      
+                      const targetHeadingRank = newHeadingIndices.indexOf(newTargetIndex);
+                      const targetNextHeadingIndex = (targetHeadingRank + 1 < newHeadingIndices.length)
+                          ? newHeadingIndices[targetHeadingRank + 1]
+                          : listWithoutSource.length;
+                      
+                      insertIndex = targetNextHeadingIndex;
+                  } else {
+                      // Moving UP: Insert BEFORE the target section (at target's index)
+                      insertIndex = newTargetIndex;
+                  }
+
+                  // 5. Construct the final list
+                  const newList = [
+                      ...listWithoutSource.slice(0, insertIndex),
+                      ...sectionToMove,
+                      ...listWithoutSource.slice(insertIndex)
+                  ];
+                  
+                  return newList;
+              }
+
+              // If not found at this level, recurse into children
+              return list.map(f => {
+                  if (f.children) {
+                      return { ...f, children: updateList(f.children) };
+                  }
+                  return f;
+              });
+          };
+
+          return updateList(prevFields);
+      });
+  };
+
   // Dependents search
   const getAllFields = (list) => list.reduce((acc, f) => [...acc, f, ...(f.children ? getAllFields(f.children) : [])], []);
   const flatFields = getAllFields(fields);
-  const realDependents = deleteConfirmation.fieldId ? flatFields.filter(f => f.conditional?.triggerId === deleteConfirmation.fieldId) : [];
+  const dependents = deleteConfirmation.fieldId ? flatFields.filter(f => f.conditional?.triggerId === deleteConfirmation.fieldId) : [];
 
 
   return (
@@ -911,7 +1094,9 @@ const FormCanvas = ({ fields, setFields }) => {
           <TreeNavigation 
             fields={fields} 
             onNavigate={scrollToField} 
-            activeId={activeHeadingId} 
+            activeId={activeHeadingId}
+            allowDrag={true} // Enable dragging
+            onReorder={handleReorderSections} // Pass the reorder handler
           />
        </div>
 
@@ -926,8 +1111,10 @@ const FormCanvas = ({ fields, setFields }) => {
                   {/* Updated Banner Style */}
                   <div className="bg-blue-50 border border-blue-200 text-blue-800 px-4 py-2 rounded-md shadow-sm flex justify-between items-center">
                       <div className="flex items-center gap-2">
-                          <Info size={16} className="text-blue-600" />
-                          <span className="text-xs font-medium">Select a question to base the condition on</span>
+                          <Info size={16} className="text-blue-600 flex-shrink-0" />
+                          <span className="text-xs font-medium">
+                              Select a question to base the condition for <strong className="font-bold text-blue-900">"{targetField?.label || 'this question'}"</strong> on
+                          </span>
                       </div>
                       <button 
                         onClick={() => setSelectionMode(null)} 
@@ -1010,10 +1197,36 @@ const FormCanvas = ({ fields, setFields }) => {
                 allFields={flatFields} // Pass flat list for lookup
                 onOrphanEnter={handleOrphanEnter}
                 onOrphanLeave={handleOrphanLeave}
-                onAddChild={handleAddChildToRepeater} // Pass new handler
+                onAddChild={(id) => handleAddChildToRepeater(id, "text field")} // Default for button (disabled in edit mode anyway)
+                onOpenTypeMenu={handleOpenTypeMenu}
              />
           ))}
        </div>
+
+       {/* Type Menu Portal */}
+       {typeMenu.isOpen && createPortal(
+            <div className="fixed inset-0 z-[9999] flex items-center justify-center" onClick={() => setTypeMenu({ ...typeMenu, isOpen: false })}>
+                 <div className="absolute inset-0 bg-black/20 backdrop-blur-sm" />
+                 <div 
+                    className="absolute bg-white rounded-lg shadow-xl border border-gray-200 w-48 py-2 z-[10000] max-h-[300px] overflow-y-auto animate-in fade-in zoom-in-95 duration-100"
+                    style={{ top: Math.min(typeMenu.y, window.innerHeight - 300), left: Math.min(typeMenu.x, window.innerWidth - 200) }}
+                 >
+                    {FIELD_TYPES.map(type => (
+                        <div 
+                            key={type} 
+                            className="px-4 py-2 hover:bg-gray-100 cursor-pointer text-sm text-gray-700"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                handleAddChildToRepeater(typeMenu.parentId, type);
+                            }}
+                        >
+                            {type}
+                        </div>
+                    ))}
+                 </div>
+            </div>,
+            document.body
+        )}
 
         {conditionalTriggerField && (
             <ConditionalLogicModal 
@@ -1099,7 +1312,7 @@ const FormCanvas = ({ fields, setFields }) => {
                  
                  <div className="relative z-[10000]" onClick={e => e.stopPropagation()}>
                     {(() => {
-                       const field = fields.find(f => f.id === menuState.fieldId);
+                       const field = findFieldById(fields, menuState.fieldId);
                        return (
                            <ContextMenu 
                                isOpen={true} 
@@ -1113,6 +1326,7 @@ const FormCanvas = ({ fields, setFields }) => {
                                mandatory={field?.mandatory || false}
                                tiptext={field?.tiptext || ""}
                                maxEntries={field?.maxEntries || 0}
+                               repeaterButtonLabel={field?.repeaterButtonLabel || ""} // Pass prop
                                numbersOnly={field?.numbersOnly || false}
                                multiselect={field?.multiselect || false}
                                allowInternational={field?.allowInternational || false}

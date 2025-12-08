@@ -344,7 +344,7 @@ function App() {
                     setFields={handleFieldChange} 
                 />
             ) : mode === 'JSON' ? (
-                <JsonPreview data={fields} journeyName={selectedJourney} />
+                <JsonPreview data={fields} />
             ) : mode === 'Spreadsheet' ? (
                 <SpreadsheetView fields={fields} />
             ) : (

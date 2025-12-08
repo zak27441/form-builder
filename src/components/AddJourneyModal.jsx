@@ -77,12 +77,19 @@ const AddJourneyModal = ({ isOpen, onClose, onAdd, existingJourneys }) => {
                     throw new Error("Invalid JSON structure. Expected 'fields' array or 'schema' array.");
                 }
                 
-                // Validate field items
-                if (fields.length > 0) {
-                    const invalidField = fields.find(f => !f.id || !f.type || !f.label);
-                    if (invalidField) {
-                        throw new Error("Invalid field data found (missing id, type, or label).");
+                // Validate field items recursively
+                const validateFields = (list) => {
+                    for (const f of list) {
+                        if (!f.id || !f.type || !f.label) return false;
+                        if (f.children && Array.isArray(f.children) && f.children.length > 0) {
+                            if (!validateFields(f.children)) return false;
+                        }
                     }
+                    return true;
+                };
+
+                if (fields.length > 0 && !validateFields(fields)) {
+                    throw new Error("Invalid field data found. A field or child field is missing required properties (id, type, or label).");
                 }
                 initialFields = fields;
 

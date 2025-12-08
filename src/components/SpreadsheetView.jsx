@@ -3,6 +3,19 @@ import { AlertTriangle } from 'lucide-react';
 import { cn } from '../utils/cn';
 
 const SpreadsheetView = ({ fields }) => {
+  // Flatten recursive structure
+  const flattenFields = (list, depth = 0) => {
+      return list.reduce((acc, field) => {
+          acc.push({ ...field, depth });
+          if (field.children && field.children.length > 0) {
+              acc.push(...flattenFields(field.children, depth + 1));
+          }
+          return acc;
+      }, []);
+  };
+
+  const flattenedFields = flattenFields(fields);
+
   // Added vertical borders via border-r on cells
   // Darker row separators via divide-gray-200
   const columns = [
@@ -74,7 +87,7 @@ const SpreadsheetView = ({ fields }) => {
       {/* Top Bar */}
       <div className="bg-gray-50 px-6 py-2 border-b border-gray-200 flex justify-between items-center shrink-0">
           <h2 className="text-sm font-bold text-gray-700 uppercase tracking-wider">Form Specs</h2>
-          <div className="text-xs text-gray-400 font-mono">{fields.length} Fields</div>
+          <div className="text-xs text-gray-400 font-mono">{flattenedFields.length} Fields</div>
       </div>
       
       <div className="overflow-auto flex-1 custom-scrollbar relative">
@@ -96,9 +109,9 @@ const SpreadsheetView = ({ fields }) => {
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-200">
-            {fields.map((field, index) => {
+            {flattenedFields.map((field, index) => {
                 const hasOptions = ['dropdown', 'radio buttons', 'checkbox'].includes(field.type.toLowerCase());
-                const triggerExists = field.conditional ? fields.some(f => f.id === field.conditional.triggerId) : true;
+                const triggerExists = field.conditional ? flattenedFields.some(f => f.id === field.conditional.triggerId) : true;
                 const isBroken = field.conditional && !triggerExists;
                 const isHeading = field.type.toLowerCase() === 'heading';
 
@@ -114,7 +127,12 @@ const SpreadsheetView = ({ fields }) => {
                         !isHeading && "sticky left-0 z-10 bg-white border-r-2 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]",
                         isHeading && "sticky left-0 z-30 border-r-2 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]"
                     )}>
-                        <div className={cn("text-xs font-medium line-clamp-2", isHeading ? "text-gray-900 font-bold tracking-wide" : "text-gray-800")} title={field.label}>
+                        <div 
+                            className={cn("text-xs font-medium line-clamp-2", isHeading ? "text-gray-900 font-bold tracking-wide" : "text-gray-800")} 
+                            title={field.label}
+                            style={{ paddingLeft: `${field.depth * 20}px` }}
+                        >
+                            {field.depth > 0 && <span className="text-gray-400 mr-1.5 opacity-50">↳</span>}
                             {field.label}
                         </div>
                     </td>

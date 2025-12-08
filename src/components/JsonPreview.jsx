@@ -1,7 +1,7 @@
 import React from 'react';
 
 const JsonPreview = ({ data }) => {
-  const cleanFields = (data || []).map((field, index) => {
+  const cleanField = (field, index) => {
       const type = field.type.toLowerCase();
       const isStatic = ['heading', 'fixed text'].includes(type);
       
@@ -37,6 +37,10 @@ const JsonPreview = ({ data }) => {
 
       if (type === 'repeater') {
         clean.maxEntries = field.maxEntries;
+        clean.repeaterButtonLabel = field.repeaterButtonLabel;
+        if (field.children && field.children.length > 0) {
+            clean.children = field.children.map((child, i) => cleanField(child, i));
+        }
       }
 
       if (field.conditional) {
@@ -54,7 +58,9 @@ const JsonPreview = ({ data }) => {
       }
 
       return clean;
-  });
+  };
+
+  const cleanFields = (data || []).map((field, index) => cleanField(field, index));
 
   const json = JSON.stringify(cleanFields, null, 2);
   

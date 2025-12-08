@@ -14,13 +14,14 @@ const ContextMenu = ({
     selectedLabel, selectedType, 
     fma, mandatory, tiptext, 
     maxEntries, numbersOnly, multiselect, allowInternational,
-    bold, options, // New prop
+    bold, options, repeaterButtonLabel, // New prop
     onUpdateField,
     onManageConditional // New prop
 }) => {
   const [expandedItem, setExpandedItem] = useState(null);
   const [showTipTextModal, setShowTipTextModal] = useState(false);
-  const [showOptionsModal, setShowOptionsModal] = useState(false); // New state
+  const [showOptionsModal, setShowOptionsModal] = useState(false); 
+  const [showRepeaterButtonTextModal, setShowRepeaterButtonTextModal] = useState(false); // New state
 
   const menuRef = useRef(null);
 
@@ -291,11 +292,34 @@ const ContextMenu = ({
 
         {/* Conditional Field Options */}
         {type === 'repeater' && (
-            <NumberControl 
-                label="Max entries" 
-                value={maxEntries} 
-                onChange={(val) => onUpdateField('maxEntries', val)} 
-            />
+            <>
+                <NumberControl 
+                    label="Max entries" 
+                    value={maxEntries} 
+                    onChange={(val) => onUpdateField('maxEntries', val)} 
+                />
+                
+                <MenuItem 
+                    label="Edit button text" 
+                    onClick={() => setShowRepeaterButtonTextModal(!showRepeaterButtonTextModal)}
+                    className={cn(showRepeaterButtonTextModal && "bg-gray-100")}
+                />
+                {showRepeaterButtonTextModal && (
+                    <div className="absolute left-full top-40 ml-2 bg-white rounded-lg shadow-xl border border-gray-100 w-64 p-4 z-50 animate-in fade-in zoom-in-95 duration-100">
+                        <h3 className="text-xs font-bold text-gray-700 mb-2">Edit Button Text</h3>
+                        <input 
+                            type="text"
+                            className="w-full p-2 text-sm border border-gray-200 rounded-md focus:outline-none focus:border-blue-500 mb-2"
+                            placeholder="+ Add"
+                            value={repeaterButtonLabel || ""}
+                            onChange={(e) => onUpdateField('repeaterButtonLabel', e.target.value)}
+                        />
+                        <div className="text-[10px] text-gray-400 text-center">
+                            Text for the add button
+                        </div>
+                    </div>
+                )}
+            </>
         )}
 
         {type === 'text field' && (
