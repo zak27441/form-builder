@@ -1,52 +1,90 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ChevronDown, Plus, X, AlertTriangle, Trash2 } from 'lucide-react'; 
+import { ChevronDown, Plus, X, AlertTriangle, Trash2, Menu, Key, Settings, Shield } from 'lucide-react'; 
 import TreeNavigation from './components/TreeNavigation';
 import ControlPanel from './components/ControlPanel';
 import FormCanvas from './components/FormCanvas';
 import FormPreview from './components/FormPreview';
 import JsonPreview from './components/JsonPreview';
-import AddJourneyModal from './components/AddJourneyModal'; // Imported
+import AddJourneyModal from './components/AddJourneyModal'; 
 import SpreadsheetView from './components/SpreadsheetView';
+import AccountSettings from './components/AccountSettings'; 
+import AdminContextMenu from './components/AdminContextMenu'; 
 
-// Initial default field for new journeys
 const DEFAULT_FIELDS = [
   { id: 1, label: "New Section", type: "heading", fma: false, mandatory: false }
 ];
 
+// No longer treating "Admin" as a special undeletable constant, but still useful for defaults
+const ADMIN_JOURNEY_NAME = "Admin"; 
+
 function App() {
-  const [fields, setFields] = useState([]); // Start empty until journey selected
+  const [fields, setFields] = useState([]); 
+  // Change: journeys is now array of objects { name, type }
   const [journeys, setJourneys] = useState([]); 
-  const [selectedJourney, setSelectedJourney] = useState(null); // Start null
+  const [selectedJourney, setSelectedJourney] = useState(null); 
   const [mode, setMode] = useState("Edit"); 
   const [subMode, setSubMode] = useState("DIP"); 
   
   // Dirty State Tracking
   const [isDirty, setIsDirty] = useState(false);
-  const [pendingJourney, setPendingJourney] = useState(null); // For navigation guard
+  const [pendingJourney, setPendingJourney] = useState(null); 
   
   // UI State
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-  const [isSavePromptOpen, setIsSavePromptOpen] = useState(false); // Navigation guard modal
-  // Removed newJourneyName state
+  const [isSavePromptOpen, setIsSavePromptOpen] = useState(false); 
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-  
-  // New State for Deletion
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [deleteConfirmationText, setDeleteConfirmationText] = useState("");
 
   const dropdownRef = useRef(null);
   const [activeHeadingId, setActiveHeadingId] = useState(null);
 
+  // Helper to get journey type from local storage safely
+  const getJourneyType = (name) => {
+      try {
+          const data = localStorage.getItem(`journey_data_${name}`);
+          if (data) {
+              const parsed = JSON.parse(data);
+              return parsed.type || 'standard';
+          }
+      } catch (e) { return 'standard'; }
+      return 'standard';
+  };
+
   // Load journeys from local storage on mount
   useEffect(() => {
-    const savedJourneys = Object.keys(localStorage)
-        .filter(key => key.startsWith('journey_data_'))
-        .map(key => key.replace('journey_data_', ''));
-    
-    if (savedJourneys.length > 0) {
-        setJourneys(savedJourneys);
+    // 1. Ensure original Admin exists if not
+    if (!localStorage.getItem(`journey_data_${ADMIN_JOURNEY_NAME}`)) {
+        const initialData = {
+            journey: ADMIN_JOURNEY_NAME,
+            fields: DEFAULT_FIELDS,
+            timestamp: new Date().toISOString(),
+            type: 'admin' // Explicitly set original Admin as admin type
+        };
+        localStorage.setItem(`journey_data_${ADMIN_JOURNEY_NAME}`, JSON.stringify(initialData));
     }
+
+    // 2. Load all journeys
+    const keys = Object.keys(localStorage).filter(key => key.startsWith('journey_data_'));
+    const loadedJourneys = keys.map(key => {
+        const name = key.replace('journey_data_', '');
+        const type = getJourneyType(name);
+        return { name, type };
+    });
+    
+    // Sort: Admin first, then others
+    loadedJourneys.sort((a, b) => {
+        if (a.name === ADMIN_JOURNEY_NAME) return -1;
+        if (b.name === ADMIN_JOURNEY_NAME) return 1;
+        return a.name.localeCompare(b.name);
+    });
+
+    setJourneys(loadedJourneys);
   }, []);
+
+  // Determine current journey type
+  const currentJourney = journeys.find(j => j.name === selectedJourney);
+  const isAdminMode = currentJourney?.type === 'admin';
 
   // Close dropdown logic
   useEffect(() => {
@@ -79,12 +117,11 @@ function App() {
         const parsed = JSON.parse(savedData);
         setFields(parsed.fields || []);
     } else {
-        // Fallback or fresh start if data missing but name exists
         setFields(DEFAULT_FIELDS); 
     }
     setSelectedJourney(journeyName);
-    setIsDirty(false); // Reset dirty state after load
-    setMode("Edit"); // Always switch to Edit mode
+    setIsDirty(false); 
+    setMode("Edit"); 
   };
 
   // Navigation Guard Logic
@@ -103,15 +140,15 @@ function App() {
 
   const saveCurrentAndSwitch = () => {
     if (selectedJourney) {
-        saveJourneyData(); // Save current
+        saveJourneyData(); 
     }
-    loadJourney(pendingJourney); // Switch
+    loadJourney(pendingJourney); 
     setIsSavePromptOpen(false);
     setPendingJourney(null);
   };
 
   const discardAndSwitch = () => {
-    loadJourney(pendingJourney); // Switch without saving
+    loadJourney(pendingJourney); 
     setIsSavePromptOpen(false);
     setPendingJourney(null);
   };
@@ -119,10 +156,14 @@ function App() {
   const saveJourneyData = () => {
     if (!selectedJourney) return;
     
+    // Preserve type
+    const type = currentJourney?.type || 'standard';
+
     const dataToSave = {
         journey: selectedJourney,
         fields: fields,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        type: type // Save type
     };
     localStorage.setItem(`journey_data_${selectedJourney}`, JSON.stringify(dataToSave));
     setIsDirty(false);
@@ -130,14 +171,21 @@ function App() {
   };
 
   // Updated Handler
-  const handleAddJourney = (name, initialFields) => {
-    const updatedJourneys = [...journeys, name];
-    setJourneys(updatedJourneys);
+  const handleAddJourney = (name, initialFields, type = 'standard') => {
+    // Check for duplicate name
+    if (journeys.some(j => j.name === name)) {
+        alert("A journey with this name already exists.");
+        return;
+    }
+
+    const newJourneyObj = { name, type };
+    setJourneys(prev => [...prev, newJourneyObj]);
     
     const initialData = {
         journey: name,
         fields: initialFields,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        type: type
     };
     localStorage.setItem(`journey_data_${name}`, JSON.stringify(initialData));
     
@@ -158,8 +206,7 @@ function App() {
         localStorage.removeItem(`journey_data_${selectedJourney}`);
         
         // 2. Remove from State
-        const updatedJourneys = journeys.filter(j => j !== selectedJourney);
-        setJourneys(updatedJourneys);
+        setJourneys(prev => prev.filter(j => j.name !== selectedJourney));
         
         // 3. Reset Selection
         setSelectedJourney(null);
@@ -180,10 +227,21 @@ function App() {
     }
   };
 
+  const standardJourneys = journeys.filter(j => j.type !== 'admin');
+  const adminJourneys = journeys.filter(j => j.type === 'admin');
+
   return (
     <div className="min-h-screen bg-[#bdc5c9] p-6 flex flex-col font-sans relative">
+      {/* Backdrop for Dropdown */}
+      {isDropdownOpen && (
+        <div 
+            className="fixed inset-0 bg-black/20 backdrop-blur-sm z-40 transition-opacity" 
+            onClick={() => setIsDropdownOpen(false)}
+        />
+      )}
+
       {/* Header */}
-      <header className="flex items-center justify-between mb-8 px-4">
+      <header className="flex items-center justify-between mb-8 px-4 relative z-50">
         <div className="text-gray-500 text-3xl font-bold tracking-tight">Google</div>
         
         <div className="flex items-center gap-2">
@@ -192,7 +250,9 @@ function App() {
           <div className="relative" ref={dropdownRef}>
               <div 
                 onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-                className="bg-white rounded-md shadow-sm px-4 py-2 min-w-[300px] flex items-center justify-between text-gray-600 cursor-pointer border border-gray-200 hover:border-gray-300 transition-colors select-none"
+                className={`bg-white rounded-md shadow-sm px-4 py-2 min-w-[300px] flex items-center justify-between text-gray-600 cursor-pointer border transition-colors select-none relative
+                    ${isDropdownOpen ? 'border-blue-500 ring-2 ring-blue-100 z-50' : 'border-gray-200 hover:border-gray-300'}
+                `}
               >
                 {selectedJourney || "Select Journey"}
                 <ChevronDown 
@@ -202,22 +262,60 @@ function App() {
               </div>
               
               {isDropdownOpen && (
-                  <div className="absolute top-full left-0 w-full bg-white mt-1 rounded-md shadow-lg border border-gray-100 z-50 max-h-60 overflow-auto animate-in fade-in zoom-in-95 duration-100">
-                      {journeys.length === 0 ? (
-                          <div className="px-4 py-3 text-sm text-gray-400 text-center italic">
-                              No journeys yet. Add one +
+                  <div className="absolute top-full left-0 w-[600px] bg-white mt-2 rounded-xl shadow-2xl border border-gray-100 z-50 overflow-hidden flex animate-in fade-in zoom-in-95 duration-150 origin-top-left">
+                      {/* Left Column: Standard */}
+                      <div className="flex-1 flex flex-col border-r border-gray-100">
+                          <div className="px-4 py-2.5 bg-gray-50 border-b border-gray-100 text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+                              Standard Journeys
                           </div>
-                      ) : (
-                          journeys.map(j => (
-                              <div 
-                                key={j} 
-                                className={`px-4 py-2 hover:bg-gray-50 cursor-pointer text-sm ${selectedJourney === j ? 'font-semibold text-blue-600 bg-blue-50' : 'text-gray-700'}`}
-                                onClick={() => attemptSwitchJourney(j)}
-                              >
-                                  {j}
-                              </div>
-                          ))
-                      )}
+                          <div className="max-h-[400px] overflow-y-auto p-2 space-y-1 custom-scrollbar">
+                              {standardJourneys.length === 0 ? (
+                                  <div className="p-4 text-center text-gray-400 text-xs italic">No standard journeys</div>
+                              ) : (
+                                  standardJourneys.map(j => (
+                                      <div 
+                                        key={j.name}
+                                        onClick={() => attemptSwitchJourney(j.name)}
+                                        className={`px-3 py-2 rounded-lg cursor-pointer text-sm transition-all border border-transparent
+                                            ${selectedJourney === j.name 
+                                                ? 'bg-gray-100 text-gray-900 font-bold shadow-sm border-gray-200' 
+                                                : 'hover:bg-gray-50 text-gray-600 hover:border-gray-100'}
+                                        `}
+                                      >
+                                          {j.name}
+                                      </div>
+                                  ))
+                              )}
+                          </div>
+                      </div>
+
+                      {/* Right Column: Admin */}
+                      <div className="flex-1 flex flex-col bg-slate-50/50">
+                          <div className="px-4 py-2.5 bg-slate-100/50 border-b border-slate-200/50 text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                                <Shield size={10} />
+                                Admin Journeys
+                          </div>
+                          <div className="max-h-[400px] overflow-y-auto p-2 space-y-1 custom-scrollbar">
+                              {adminJourneys.length === 0 ? (
+                                  <div className="p-4 text-center text-slate-400 text-xs italic">No admin journeys</div>
+                              ) : (
+                                  adminJourneys.map(j => (
+                                      <div 
+                                        key={j.name}
+                                        onClick={() => attemptSwitchJourney(j.name)}
+                                        className={`px-3 py-2 rounded-lg cursor-pointer text-sm transition-all border border-transparent flex items-center justify-between group
+                                            ${selectedJourney === j.name 
+                                                ? 'bg-white text-slate-800 font-bold shadow-sm border-slate-200' 
+                                                : 'hover:bg-white text-slate-600 hover:shadow-sm hover:border-slate-100'}
+                                        `}
+                                      >
+                                          <span>{j.name}</span>
+                                          {selectedJourney === j.name && <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />}
+                                      </div>
+                                  ))
+                              )}
+                          </div>
+                      </div>
                   </div>
               )}
           </div>
@@ -230,7 +328,7 @@ function App() {
             <Plus size={20} />
           </button>
 
-          {/* NEW: Delete Button (Only show if a journey is selected) */}
+          {/* Delete Button - Allowed for ALL journeys now */}
           {selectedJourney && (
             <button 
                 onClick={() => setIsDeleteModalOpen(true)}
@@ -242,10 +340,12 @@ function App() {
           )}
         </div>
         
-        <div className="w-[100px]"></div> 
+        <div className="w-[150px] flex justify-end">
+             <AccountSettings />
+        </div> 
       </header>
 
-      {/* Save Confirmation Modal (Navigation Guard) */}
+      {/* Save Confirmation Modal */}
       {isSavePromptOpen && (
         <div 
             className="fixed inset-0 bg-black/50 z-[110] flex items-center justify-center backdrop-blur-sm"
@@ -280,15 +380,15 @@ function App() {
         </div>
       )}
 
-      {/* REPLACED ADD JOURNEY MODAL */}
+      {/* Add Journey Modal - Pass simplified existingJourneys (names only) */}
       <AddJourneyModal 
           isOpen={isAddModalOpen} 
           onClose={() => setIsAddModalOpen(false)} 
           onAdd={handleAddJourney}
-          existingJourneys={journeys}
+          existingJourneys={journeys.map(j => j.name)} 
       />
 
-      {/* NEW: Delete Journey Modal */}
+      {/* Delete Journey Modal */}
       {isDeleteModalOpen && (
         <div className="fixed inset-0 bg-black/50 z-[120] flex items-center justify-center backdrop-blur-sm">
             <div className="bg-white rounded-lg shadow-xl p-6 w-[400px] animate-in fade-in zoom-in-95 duration-200 text-center">
@@ -334,7 +434,6 @@ function App() {
       )}
 
       {/* Main Grid */}
-      {/* Added translate-x-[50px] to move everything RIGHT */}
       <main className="flex flex-1 gap-6 max-w-[1150px] mx-auto translate-x-[50px] w-full items-start h-[calc(100vh-140px)]">
         
         {selectedJourney ? (
@@ -342,6 +441,7 @@ function App() {
                 <FormCanvas 
                     fields={fields} 
                     setFields={handleFieldChange} 
+                    isAdminJourney={isAdminMode} // Use dynamic check
                 />
             ) : mode === 'JSON' ? (
                 <JsonPreview data={fields} />
@@ -366,7 +466,6 @@ function App() {
                 setMode={setMode} 
                 subMode={subMode} 
                 setSubMode={setSubMode}
-                // Add missing props
                 selectedJourney={selectedJourney}
                 isDirty={isDirty}
                 fields={fields}

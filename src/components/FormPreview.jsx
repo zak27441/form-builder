@@ -134,8 +134,21 @@ const PreviewInput = ({ field, value, onChange, onCheckboxChange, subMode, formV
                         type="text"
                         value={value || ""}
                         onChange={(e) => {
-                            if (field.numbersOnly && !/^\d*$/.test(e.target.value)) return;
-                            onChange(field.id, e.target.value);
+                            let val = e.target.value;
+                            
+                            // Input Masking Logic
+                            if (field.numbersOnly || type === 'sort code' || type === 'account number') {
+                                // Integers only
+                                if (!/^\d*$/.test(val)) return;
+                            } else if (type === 'currency') {
+                                // Float (allow one dot)
+                                if (!/^\d*\.?\d*$/.test(val)) return;
+                            } else if (type === 'phone number') {
+                                // Phone (allow digits, spaces, +)
+                                if (!/^[\d\s+]*$/.test(val)) return;
+                            }
+
+                            onChange(field.id, val);
                         }}
                         placeholder={type === 'sort code' ? "-_ _ -_ _ -_ _" : type === 'account number' ? "-_ _ _ _ _ _ _ _" : ""}
                         className={cn(

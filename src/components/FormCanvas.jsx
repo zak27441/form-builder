@@ -1,8 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom'; 
-import { Menu, Settings, ChevronDown, Calendar, MapPin, X, AlertTriangle, Info, Trash2, AlertCircle, Plus, Check } from 'lucide-react'; // Added Check
+import { Menu, Settings, ChevronDown, Calendar, MapPin, X, AlertTriangle, Info, Trash2, AlertCircle, Plus, Check, Filter } from 'lucide-react'; // Added Filter
 import { useAutoAnimate } from '@formkit/auto-animate/react';
 import ContextMenu from './ContextMenu';
+import AdminContextMenu from './AdminContextMenu'; // NEW IMPORT
 import TreeNavigation from './TreeNavigation';
 import { cn } from '../utils/cn';
 
@@ -344,6 +345,17 @@ const updateFieldTree = (fields, parentId, updateFn) => {
     });
 };
 
+// Helper to check for matching descendants (Updated for Multi-select)
+const hasMatchingDescendant = (children, filterIds) => {
+    if (!children || children.length === 0) return false;
+    if (!filterIds || filterIds.length === 0) return true;
+    
+    return children.some(child => 
+        (child.integrations?.some(id => filterIds.includes(id))) || 
+        hasMatchingDescendant(child.children, filterIds)
+    );
+};
+
 const FormFieldItem = ({ 
     field, 
     index, 
@@ -359,8 +371,18 @@ const FormFieldItem = ({
     onOrphanEnter, 
     onOrphanLeave,
     onAddChild, 
-    onOpenTypeMenu
+    onOpenTypeMenu,
+    isAdminJourney, 
+    adminIntegrations,
+    activeIntegrationFilters // Array
 }) => {
+  // Filter Visibility Logic
+  const isVisible = !activeIntegrationFilters || activeIntegrationFilters.length === 0 || 
+                    (field.integrations?.some(id => activeIntegrationFilters.includes(id))) || 
+                    hasMatchingDescendant(field.children, activeIntegrationFilters);
+
+  if (!isVisible) return null;
+
   const isDragging = draggingId === field.id;
   const isHeading = field.type.toLowerCase() === 'heading';
   const isRepeater = field.type.toLowerCase() === 'repeater';
@@ -457,6 +479,9 @@ const FormFieldItem = ({
                                 onOrphanLeave={onOrphanLeave}
                                 onAddChild={onAddChild}
                                 onOpenTypeMenu={onOpenTypeMenu}
+                                isAdminJourney={isAdminJourney} // Pass Prop
+                                adminIntegrations={adminIntegrations} // Pass Prop
+                                activeIntegrationFilters={activeIntegrationFilters} // Pass down
                             />
                         ))}
                     </div>
@@ -603,6 +628,30 @@ const FormFieldItem = ({
             <div className={cn(selectionMode && !isRepeater && "pointer-events-none")}>
                 {renderInput()}
             </div>
+
+            {/* NEW: Integration Chips */}
+            {isAdminJourney && field.integrations && field.integrations.length > 0 && adminIntegrations && (
+                <div className="flex flex-wrap gap-1 mt-1">
+                    {field.integrations.map(id => {
+                        const integration = adminIntegrations.find(i => i.id === id);
+                        if (!integration) return null;
+                        return (
+                            <span 
+                                key={id} 
+                                className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold border shadow-sm select-none"
+                                style={{ 
+                                    backgroundColor: integration.bg, 
+                                    color: integration.text, 
+                                    borderColor: integration.border 
+                                }}
+                            >
+                                {integration.label}
+                            </span>
+                        );
+                    })}
+                </div>
+            )}
+
             {field.tiptext && (
                 <div className="text-[10px] font-bold text-black w-full mt-1">
                     {field.tiptext}
@@ -624,7 +673,7 @@ const FormFieldItem = ({
   );
 };
 
-const FormCanvas = ({ fields, setFields }) => {
+const FormCanvas = ({ fields, setFields, isAdminJourney }) => { // Accept Prop
   const [menuState, setMenuState] = useState({ isOpen: false, fieldId: null });
   const [draggingId, setDraggingId] = useState(null);
   const [activeHeadingId, setActiveHeadingId] = useState(null);
@@ -636,6 +685,10 @@ const FormCanvas = ({ fields, setFields }) => {
   const [showRemoveConditionConfirm, setShowRemoveConditionConfirm] = useState(false); // New state for remove confirmation
   const [deleteConfirmation, setDeleteConfirmation] = useState({ isOpen: false, fieldId: null });
   const [hoveredOrphan, setHoveredOrphan] = useState(null); // New state
+  const [adminIntegrations, setAdminIntegrations] = useState([]); // New State
+  const [activeIntegrationFilters, setActiveIntegrationFilters] = useState([]); // New State
+  const [isFilterMenuOpen, setIsFilterMenuOpen] = useState(false); 
+  const filterMenuRef = useRef(null); 
   
   const [listRef, enableAnimations] = useAutoAnimate();
   
@@ -644,21 +697,41 @@ const FormCanvas = ({ fields, setFields }) => {
   const dragStartY = useRef(0);
   const warningDropdownRef = useRef(null);
 
-  // Click outside handler for warning dropdown
+  // NEW: Load integrations for Admin Journey
+  useEffect(() => {
+      if (isAdminJourney) {
+          const loadIntegrations = () => {
+              try {
+                  const saved = localStorage.getItem('admin_integrations');
+                  if (saved) setAdminIntegrations(JSON.parse(saved));
+              } catch (e) { console.error(e); }
+          };
+          
+          loadIntegrations();
+          // Listen for updates from AccountSettings
+          window.addEventListener('integrations-updated', loadIntegrations);
+          return () => window.removeEventListener('integrations-updated', loadIntegrations);
+      }
+  }, [isAdminJourney]);
+
+  // Click outside handler
   useEffect(() => {
     const handleClickOutside = (event) => {
+      if (filterMenuRef.current && !filterMenuRef.current.contains(event.target)) {
+        setIsFilterMenuOpen(false);
+      }
       if (warningDropdownRef.current && !warningDropdownRef.current.contains(event.target)) {
         setShowWarningOptions(false);
       }
     };
 
-    if (showWarningOptions) {
+    if (showWarningOptions || isFilterMenuOpen) {
       document.addEventListener('mousedown', handleClickOutside);
     }
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
-  }, [showWarningOptions]);
+  }, [showWarningOptions, isFilterMenuOpen]);
 
   // --- SCROLL SPY ---
   const handleScroll = (e) => {
@@ -703,7 +776,7 @@ const FormCanvas = ({ fields, setFields }) => {
 
   // Updated Pointer Down to track parent
   const handlePointerDown = (e, index, id, parentId = null) => {
-    if (selectionMode) return;
+    if (selectionMode || activeIntegrationFilters.length > 0) return; // Disable D&D when filtering
     e.preventDefault(); 
     e.stopPropagation(); // Stop propagation to avoid triggering parent drag
     
@@ -1084,6 +1157,13 @@ const FormCanvas = ({ fields, setFields }) => {
   const flatFields = getAllFields(fields);
   const dependents = deleteConfirmation.fieldId ? flatFields.filter(f => f.conditional?.triggerId === deleteConfirmation.fieldId) : [];
 
+  const toggleFilter = (id) => {
+      setActiveIntegrationFilters(prev => {
+          if (prev.includes(id)) return prev.filter(f => f !== id);
+          return [...prev, id];
+      });
+  };
+
 
   return (
     <div className={cn(
@@ -1105,6 +1185,85 @@ const FormCanvas = ({ fields, setFields }) => {
             className="flex-1 p-4 overflow-y-auto custom-scrollbar relative scroll-smooth"
             onScroll={handleScroll}
        >
+          {/* NEW: Dropdown Filter Banner */}
+          {isAdminJourney && adminIntegrations.length > 0 && (
+              <div className="sticky top-0 z-30 mb-4 bg-white/95 backdrop-blur-sm border-b border-gray-100 pb-2 pt-1 -mt-2">
+                  <div className="relative inline-block" ref={filterMenuRef}>
+                      <button 
+                          onClick={() => setIsFilterMenuOpen(!isFilterMenuOpen)}
+                          className={cn(
+                              "flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-medium transition-all select-none",
+                              isFilterMenuOpen || activeIntegrationFilters.length > 0
+                                  ? "bg-blue-50 border-blue-200 text-blue-700" 
+                                  : "bg-white border-gray-200 text-gray-600 hover:bg-gray-50"
+                          )}
+                      >
+                          <Filter size={14} />
+                          <span>Filter Integrations</span>
+                          {activeIntegrationFilters.length > 0 && (
+                              <span className="bg-blue-600 text-white text-[10px] px-1.5 py-0.5 rounded-full min-w-[1.2em] text-center">
+                                  {activeIntegrationFilters.length}
+                              </span>
+                          )}
+                          <ChevronDown size={14} className={cn("transition-transform ml-1", isFilterMenuOpen && "rotate-180")} />
+                      </button>
+
+                      {isFilterMenuOpen && (
+                          <div className="absolute top-full left-0 mt-2 w-64 bg-white rounded-xl shadow-xl border border-gray-100 p-2 z-50 animate-in fade-in zoom-in-95 duration-100">
+                              <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider px-2 py-1 mb-1">
+                                  Select Integrations
+                              </div>
+                              <div className="space-y-1 max-h-[300px] overflow-y-auto custom-scrollbar">
+                                  {adminIntegrations.map(int => {
+                                      const isSelected = activeIntegrationFilters.includes(int.id);
+                                      return (
+                                          <div 
+                                              key={int.id}
+                                              onClick={() => toggleFilter(int.id)}
+                                              className={cn(
+                                                  "flex items-center justify-between px-2 py-2 rounded-lg cursor-pointer transition-colors text-xs select-none",
+                                                  isSelected ? "bg-blue-50" : "hover:bg-gray-50"
+                                              )}
+                                          >
+                                              <div className="flex items-center gap-2">
+                                                  <div className={cn(
+                                                      "w-4 h-4 rounded border flex items-center justify-center transition-all",
+                                                      isSelected ? "bg-blue-600 border-blue-600" : "border-gray-300 bg-white"
+                                                  )}>
+                                                      {isSelected && <Check size={10} className="text-white stroke-[3]" />}
+                                                  </div>
+                                                  <span 
+                                                      className="px-1.5 py-0.5 rounded text-[10px] font-bold border"
+                                                      style={{ 
+                                                          backgroundColor: int.bg, 
+                                                          color: int.text, 
+                                                          borderColor: int.border 
+                                                      }}
+                                                  >
+                                                      {int.label}
+                                                  </span>
+                                              </div>
+                                          </div>
+                                      );
+                                  })}
+                              </div>
+                              
+                              {activeIntegrationFilters.length > 0 && (
+                                  <div className="border-t border-gray-100 mt-2 pt-2 px-1">
+                                      <button 
+                                          onClick={() => { setActiveIntegrationFilters([]); setIsFilterMenuOpen(false); }}
+                                          className="w-full py-1.5 text-xs text-gray-500 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
+                                      >
+                                          Clear Filters
+                                      </button>
+                                  </div>
+                              )}
+                          </div>
+                      )}
+                  </div>
+              </div>
+          )}
+
           {/* Selection Mode Banner */}
           {selectionMode && (
               <div className="sticky top-0 z-20 mb-4 flex flex-col gap-2">
@@ -1199,6 +1358,9 @@ const FormCanvas = ({ fields, setFields }) => {
                 onOrphanLeave={handleOrphanLeave}
                 onAddChild={(id) => handleAddChildToRepeater(id, "text field")} // Default for button (disabled in edit mode anyway)
                 onOpenTypeMenu={handleOpenTypeMenu}
+                isAdminJourney={isAdminJourney} // Pass Prop
+                adminIntegrations={adminIntegrations} // Pass Prop
+                activeIntegrationFilters={activeIntegrationFilters} // Pass array
              />
           ))}
        </div>
@@ -1313,8 +1475,12 @@ const FormCanvas = ({ fields, setFields }) => {
                  <div className="relative z-[10000]" onClick={e => e.stopPropagation()}>
                     {(() => {
                        const field = findFieldById(fields, menuState.fieldId);
+                       
+                       // CONDITIONAL RENDER
+                       const MenuComponent = isAdminJourney ? AdminContextMenu : ContextMenu;
+
                        return (
-                           <ContextMenu 
+                           <MenuComponent 
                                isOpen={true} 
                                position={{ x: 0, y: 0 }} 
                                onClose={handleCloseMenu}
@@ -1326,7 +1492,7 @@ const FormCanvas = ({ fields, setFields }) => {
                                mandatory={field?.mandatory || false}
                                tiptext={field?.tiptext || ""}
                                maxEntries={field?.maxEntries || 0}
-                               repeaterButtonLabel={field?.repeaterButtonLabel || ""} // Pass prop
+                               repeaterButtonLabel={field?.repeaterButtonLabel || ""} 
                                numbersOnly={field?.numbersOnly || false}
                                multiselect={field?.multiselect || false}
                                allowInternational={field?.allowInternational || false}
@@ -1334,6 +1500,7 @@ const FormCanvas = ({ fields, setFields }) => {
                                options={field?.options || []}
                                onUpdateField={handleUpdateField}
                                onManageConditional={handleEnterSelectionMode}
+                               integrations={field?.integrations || []} // Pass field's integrations
                            />
                        );
                     })()}
