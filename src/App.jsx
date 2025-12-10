@@ -258,9 +258,12 @@ function App() {
     if (!journeyObj) return;
 
     try {
+        // Sanitize fields to remove 'undefined' values which Firestore rejects
+        const cleanFields = JSON.parse(JSON.stringify(fields));
+
         await setDoc(doc(db, "journeys", journeyObj.name), {
             name: selectedJourney,
-            fields: fields,
+            fields: cleanFields, // Use sanitized fields
             timestamp: new Date().toISOString(),
             type: journeyObj.type || 'standard',
             lastModifiedBy: user.email
@@ -270,7 +273,7 @@ function App() {
         console.log("Saved to Firebase:", selectedJourney);
     } catch (e) {
         console.error("Error saving journey:", e);
-        alert("Failed to save changes to Firebase.");
+        alert("Failed to save changes to Firebase: " + e.message);
     }
   };
 
@@ -283,9 +286,12 @@ function App() {
     }
 
     try {
+        // Sanitize initial fields as well
+        const cleanFields = JSON.parse(JSON.stringify(initialFields));
+
         await setDoc(doc(db, "journeys", name), {
             name: name,
-            fields: initialFields,
+            fields: cleanFields,
             timestamp: new Date().toISOString(),
             type: type,
             createdBy: user.email
@@ -295,10 +301,6 @@ function App() {
             setPendingJourney(name);
             setIsSavePromptOpen(true);
         } else {
-            // Note: onSnapshot will fire and update 'journeys', 
-            // but we can manually set selected here if we wait for the update,
-            // or just rely on the user clicking it.
-            // Let's force a load assuming it will exist shortly.
             setSelectedJourney(name);
             setFields(initialFields);
             setIsDirty(false);

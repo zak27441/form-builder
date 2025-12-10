@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Menu, Key, Plus, ChevronLeft, Save, Trash2, Settings, X, UserPlus, Copy, Check, Loader2, User, Camera, LogOut, Lock, Eye, EyeOff, Search, UserMinus, ShieldAlert, Users } from 'lucide-react'; 
 import { createPortal } from 'react-dom';
 import { db, auth } from '../firebase'; 
-import { collection, addDoc, onSnapshot, query, where, updateDoc, doc, deleteDoc, getDocs, setDoc } from 'firebase/firestore'; 
+import { collection, addDoc, onSnapshot, query, where, updateDoc, doc, deleteDoc, getDocs, setDoc, getDoc } from 'firebase/firestore'; 
 import { signOut, updatePassword } from 'firebase/auth';
 
 // Helper for pastel colors (Integrations)
