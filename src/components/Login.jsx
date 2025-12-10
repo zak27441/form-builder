@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
-import { auth, googleProvider } from '../firebase';
+import { auth, googleProvider, db } from '../firebase'; // Add db import
 import { 
   signInWithEmailAndPassword, 
   createUserWithEmailAndPassword, 
   sendPasswordResetEmail,
   signInWithPopup
 } from 'firebase/auth';
+import { doc, setDoc, getDoc } from 'firebase/firestore'; // Add Firestore imports
 import { AlertTriangle, Mail, Loader2, ArrowLeft, CheckCircle, Lock, Eye, EyeOff, Layout } from 'lucide-react';
 
 const Login = () => {
@@ -28,10 +29,29 @@ const Login = () => {
       if (isReset) {
         await sendPasswordResetEmail(auth, email);
         setSuccess('Password reset email sent! Check your inbox.');
-      } else if (isLogin) {
-        await signInWithEmailAndPassword(auth, email, password);
       } else {
-        await createUserWithEmailAndPassword(auth, email, password);
+        let userCred;
+        if (isLogin) {
+          userCred = await signInWithEmailAndPassword(auth, email, password);
+        } else {
+          userCred = await createUserWithEmailAndPassword(auth, email, password);
+        }
+        
+        // NEW: Ensure User Document Persists Immediately
+        const user = userCred.user;
+        const userRef = doc(db, "users", user.uid);
+        const userSnap = await getDoc(userRef);
+
+        if (!userSnap.exists()) {
+            await setDoc(userRef, {
+                uid: user.uid,
+                email: user.email,
+                firstName: "New", 
+                lastName: "User", 
+                role: 'editor',   // Default role
+                createdAt: new Date().toISOString()
+            });
+        }
       }
     } catch (err) {
       console.error(err);
@@ -51,8 +71,26 @@ const Login = () => {
     try {
       setError('');
       setLoading(true);
-      await signInWithPopup(auth, googleProvider);
-      // The onAuthStateChanged listener in App.jsx will handle the redirect
+      const result = await signInWithPopup(auth, googleProvider);
+      
+      // NEW: Ensure User Document Persists for Google Users
+      const user = result.user;
+      const userRef = doc(db, "users", user.uid);
+      const userSnap = await getDoc(userRef);
+
+      if (!userSnap.exists()) {
+          const [first, ...last] = (user.displayName || "New User").split(" ");
+          await setDoc(userRef, {
+              uid: user.uid,
+              email: user.email,
+              firstName: first || "New",
+              lastName: last.join(" ") || "User",
+              photoURL: user.photoURL,
+              role: 'editor',
+              createdAt: new Date().toISOString()
+          });
+      }
+
     } catch (err) {
       console.error(err);
       let msg = "Failed to sign in with Google.";

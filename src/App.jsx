@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ChevronDown, Plus, Trash2, Shield, Loader2, LogOut, Layout, AlertTriangle } from 'lucide-react'; // Added Layout icon
+import { ChevronDown, Plus, Trash2, Shield, Loader2, LogOut, Layout, AlertTriangle } from 'lucide-react'; 
 // FIREBASE IMPORTS
-import { auth, db } from './firebase'; // Re-add db
+import { auth, db } from './firebase'; 
 import { onAuthStateChanged, signOut } from 'firebase/auth';
-import { collection, query, where, getDocs, doc, getDoc } from 'firebase/firestore'; // Re-add imports
+import { collection, query, where, getDocs, doc, getDoc, setDoc, deleteDoc, onSnapshot } from 'firebase/firestore'; // Added setDoc, deleteDoc, onSnapshot
 import Login from './components/Login';
 
 import TreeNavigation from './components/TreeNavigation';
@@ -20,23 +20,21 @@ const DEFAULT_FIELDS = [
   { id: 1, label: "New Section", type: "heading", fma: false, mandatory: false }
 ];
 
-// No longer treating "Admin" as a special undeletable constant, but still useful for defaults
 const ADMIN_JOURNEY_NAME = "Admin"; 
 
 function App() {
   // --- AUTH STATE ---
   const [user, setUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
-  const [hasAccess, setHasAccess] = useState(false); // NEW
-  const [accessLoading, setAccessLoading] = useState(false); // NEW
-  const [isSuperAdmin, setIsSuperAdmin] = useState(false); // NEW
+  const [hasAccess, setHasAccess] = useState(false); 
+  const [accessLoading, setAccessLoading] = useState(false); 
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false); 
   
-  // NEW: User Role State
+  // User Role State
   const [userRole, setUserRole] = useState('editor'); 
 
   // --- APP STATE ---
   const [fields, setFields] = useState([]); 
-  // Change: journeys is now array of objects { name, type }
   const [journeys, setJourneys] = useState([]); 
   const [selectedJourney, setSelectedJourney] = useState(null); 
   const [mode, setMode] = useState("Edit"); 
@@ -96,14 +94,13 @@ function App() {
                   setIsSuperAdmin(false);
               }
 
-              // NEW: Fetch User Role from 'users' collection
+              // Fetch User Role
               try {
                   const userDocRef = doc(db, "users", currentUser.uid);
                   const userSnap = await getDoc(userDocRef);
                   if (userSnap.exists()) {
                       const r = userSnap.data().role || 'editor';
                       setUserRole(r);
-                      // If reader, force preview mode immediately
                       if (r === 'reader') setMode('Preview');
                   }
               } catch (e) {
@@ -122,60 +119,63 @@ function App() {
     return () => unsubscribe();
   }, []);
 
-  // Define handleLogout HERE, before it's used
   const handleLogout = () => {
     signOut(auth).then(() => {
       setUser(null);
       setHasAccess(false); 
-      localStorage.clear();
+      // localStorage.clear(); // Don't clear local storage anymore as we depend on Firebase
       window.location.href = '/'; 
     }).catch(error => {
       console.error("Error signing out:", error);
     });
   };
 
-  // Helper to get journey type from local storage safely
-  const getJourneyType = (name) => {
-      try {
-          const data = localStorage.getItem(`journey_data_${name}`);
-          if (data) {
-              const parsed = JSON.parse(data);
-              return parsed.type || 'standard';
-          }
-      } catch (e) { return 'standard'; }
-      return 'standard';
-  };
-
-  // Load journeys from local storage on mount
+  // --- FIREBASE: LOAD JOURNEYS ---
   useEffect(() => {
-    // 1. Ensure original Admin exists if not
-    if (!localStorage.getItem(`journey_data_${ADMIN_JOURNEY_NAME}`)) {
-        const initialData = {
-            journey: ADMIN_JOURNEY_NAME,
-            fields: DEFAULT_FIELDS,
-            timestamp: new Date().toISOString(),
-            type: 'admin' // Explicitly set original Admin as admin type
-        };
-        localStorage.setItem(`journey_data_${ADMIN_JOURNEY_NAME}`, JSON.stringify(initialData));
-    }
+    if (!user) return;
 
-    // 2. Load all journeys
-    const keys = Object.keys(localStorage).filter(key => key.startsWith('journey_data_'));
-    const loadedJourneys = keys.map(key => {
-        const name = key.replace('journey_data_', '');
-        const type = getJourneyType(name);
-        return { name, type };
-    });
-    
-    // Sort: Admin first, then others
-    loadedJourneys.sort((a, b) => {
-        if (a.name === ADMIN_JOURNEY_NAME) return -1;
-        if (b.name === ADMIN_JOURNEY_NAME) return 1;
-        return a.name.localeCompare(b.name);
+    // Listen to 'journeys' collection
+    const q = collection(db, "journeys");
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+        const loadedJourneys = snapshot.docs.map(doc => ({ 
+            id: doc.id, // Firestore Doc ID
+            ...doc.data() 
+        }));
+        
+        // Ensure Admin Journey exists
+        const adminExists = loadedJourneys.some(j => j.name === ADMIN_JOURNEY_NAME);
+        if (!adminExists && isSuperAdmin) {
+            // Create default admin journey if missing
+             setDoc(doc(db, "journeys", ADMIN_JOURNEY_NAME), {
+                name: ADMIN_JOURNEY_NAME,
+                fields: DEFAULT_FIELDS,
+                timestamp: new Date().toISOString(),
+                type: 'admin',
+                createdBy: 'system'
+            });
+        }
+
+        // Sort: Admin first, then others
+        loadedJourneys.sort((a, b) => {
+            if (a.name === ADMIN_JOURNEY_NAME) return -1;
+            if (b.name === ADMIN_JOURNEY_NAME) return 1;
+            return a.name.localeCompare(b.name);
+        });
+
+        setJourneys(loadedJourneys);
+        
+        // If we are currently viewing a journey, update its fields from the live data
+        // (Optional: this makes it real-time collaborative, but might interrupt editing. 
+        // For now, let's only update the list, but if the selected journey is deleted, handle it)
+        if (selectedJourney && !loadedJourneys.find(j => j.name === selectedJourney)) {
+            setSelectedJourney(null);
+            setFields([]);
+        }
     });
 
-    setJourneys(loadedJourneys);
-  }, []);
+    return () => unsubscribe();
+  }, [user, isSuperAdmin, selectedJourney]);
+
 
   const currentJourney = journeys.find(j => j.name === selectedJourney);
   const isAdminMode = currentJourney?.type === 'admin';
@@ -204,19 +204,20 @@ function App() {
       setIsDirty(true);
   };
 
-  // Load journey data
+  // Load journey data FROM STATE (sourced from Firebase)
   const loadJourney = (journeyName) => {
-    const savedData = localStorage.getItem(`journey_data_${journeyName}`);
-    if (savedData) {
-        const parsed = JSON.parse(savedData);
-        setFields(parsed.fields || []);
+    const journeyData = journeys.find(j => j.name === journeyName);
+    
+    if (journeyData) {
+        setFields(journeyData.fields || []);
     } else {
         setFields(DEFAULT_FIELDS); 
     }
+    
     setSelectedJourney(journeyName);
     setIsDirty(false); 
     
-    // NEW: Respect User Role when loading
+    // Respect User Role when loading
     setMode(userRole === 'reader' ? "Preview" : "Edit"); 
   };
 
@@ -234,9 +235,9 @@ function App() {
     }
   };
 
-  const saveCurrentAndSwitch = () => {
+  const saveCurrentAndSwitch = async () => {
     if (selectedJourney) {
-        saveJourneyData(); 
+        await saveJourneyData(); 
     }
     loadJourney(pendingJourney); 
     setIsSavePromptOpen(false);
@@ -249,69 +250,86 @@ function App() {
     setPendingJourney(null);
   };
 
-  const saveJourneyData = () => {
+  // --- FIREBASE: SAVE JOURNEY ---
+  const saveJourneyData = async () => {
     if (!selectedJourney) return;
     
-    // Preserve type
-    const type = currentJourney?.type || 'standard';
+    const journeyObj = journeys.find(j => j.name === selectedJourney);
+    if (!journeyObj) return;
 
-    const dataToSave = {
-        journey: selectedJourney,
-        fields: fields,
-        timestamp: new Date().toISOString(),
-        type: type // Save type
-    };
-    localStorage.setItem(`journey_data_${selectedJourney}`, JSON.stringify(dataToSave));
-    setIsDirty(false);
-    console.log("Saved:", selectedJourney);
+    try {
+        await setDoc(doc(db, "journeys", journeyObj.name), {
+            name: selectedJourney,
+            fields: fields,
+            timestamp: new Date().toISOString(),
+            type: journeyObj.type || 'standard',
+            lastModifiedBy: user.email
+        }, { merge: true });
+
+        setIsDirty(false);
+        console.log("Saved to Firebase:", selectedJourney);
+    } catch (e) {
+        console.error("Error saving journey:", e);
+        alert("Failed to save changes to Firebase.");
+    }
   };
 
-  // Updated Handler
-  const handleAddJourney = (name, initialFields, type = 'standard') => {
-    // Check for duplicate name
+  // --- FIREBASE: ADD JOURNEY ---
+  const handleAddJourney = async (name, initialFields, type = 'standard') => {
+    // Check for duplicate name in current state
     if (journeys.some(j => j.name === name)) {
         alert("A journey with this name already exists.");
         return;
     }
 
-    const newJourneyObj = { name, type };
-    setJourneys(prev => [...prev, newJourneyObj]);
-    
-    const initialData = {
-        journey: name,
-        fields: initialFields,
-        timestamp: new Date().toISOString(),
-        type: type
-    };
-    localStorage.setItem(`journey_data_${name}`, JSON.stringify(initialData));
-    
-    if (isDirty) {
-        setPendingJourney(name);
-        setIsSavePromptOpen(true);
-    } else {
-        loadJourney(name);
-    }
+    try {
+        await setDoc(doc(db, "journeys", name), {
+            name: name,
+            fields: initialFields,
+            timestamp: new Date().toISOString(),
+            type: type,
+            createdBy: user.email
+        });
 
-    setIsAddModalOpen(false);
+        if (isDirty) {
+            setPendingJourney(name);
+            setIsSavePromptOpen(true);
+        } else {
+            // Note: onSnapshot will fire and update 'journeys', 
+            // but we can manually set selected here if we wait for the update,
+            // or just rely on the user clicking it.
+            // Let's force a load assuming it will exist shortly.
+            setSelectedJourney(name);
+            setFields(initialFields);
+            setIsDirty(false);
+            setMode(userRole === 'reader' ? "Preview" : "Edit");
+        }
+
+        setIsAddModalOpen(false);
+    } catch (e) {
+        console.error("Error creating journey:", e);
+        alert("Failed to create journey.");
+    }
   };
 
-  // Delete Journey Logic
-  const handleDeleteJourney = () => {
+  // --- FIREBASE: DELETE JOURNEY ---
+  const handleDeleteJourney = async () => {
     if (deleteConfirmationText === "DELETE" && selectedJourney) {
-        // 1. Remove from Local Storage
-        localStorage.removeItem(`journey_data_${selectedJourney}`);
-        
-        // 2. Remove from State
-        setJourneys(prev => prev.filter(j => j.name !== selectedJourney));
-        
-        // 3. Reset Selection
-        setSelectedJourney(null);
-        setFields([]);
-        setIsDirty(false);
-        
-        // 4. Close Modal & Reset
-        setIsDeleteModalOpen(false);
-        setDeleteConfirmationText("");
+        try {
+            await deleteDoc(doc(db, "journeys", selectedJourney));
+            
+            // Reset Selection
+            setSelectedJourney(null);
+            setFields([]);
+            setIsDirty(false);
+            
+            // Close Modal & Reset
+            setIsDeleteModalOpen(false);
+            setDeleteConfirmationText("");
+        } catch (e) {
+            console.error("Error deleting journey:", e);
+            alert("Failed to delete journey.");
+        }
     }
   };
 
