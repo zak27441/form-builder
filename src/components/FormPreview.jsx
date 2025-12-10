@@ -332,7 +332,8 @@ const FormPreview = ({ fields, subMode }) => {
 
   return (
     <div className="flex-1 shadow-2xl flex overflow-hidden relative rounded-xl h-[calc(100vh-140px)] bg-white">
-       <div className="w-[200px] border-r border-slate-400 bg-slate-300 flex-shrink-0">
+       {/* Update background and border to match Edit Mode */}
+       <div className="w-[200px] border-r border-gray-100 bg-[#e6e6e6] flex-shrink-0">
           <TreeNavigation 
             fields={fields} 
             onNavigate={(id) => {
