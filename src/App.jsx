@@ -1,5 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ChevronDown, Plus, X, AlertTriangle, Trash2, Menu, Key, Settings, Shield } from 'lucide-react'; 
+import { ChevronDown, Plus, Trash2, Shield, Loader2, LogOut, Layout, AlertTriangle } from 'lucide-react'; // Added Layout icon
+// FIREBASE IMPORTS
+import { auth, db } from './firebase'; // Re-add db
+import { onAuthStateChanged, signOut } from 'firebase/auth';
+import { collection, query, where, getDocs, doc, getDoc } from 'firebase/firestore'; // Re-add imports
+import Login from './components/Login';
+
 import TreeNavigation from './components/TreeNavigation';
 import ControlPanel from './components/ControlPanel';
 import FormCanvas from './components/FormCanvas';
@@ -18,6 +24,17 @@ const DEFAULT_FIELDS = [
 const ADMIN_JOURNEY_NAME = "Admin"; 
 
 function App() {
+  // --- AUTH STATE ---
+  const [user, setUser] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [hasAccess, setHasAccess] = useState(false); // NEW
+  const [accessLoading, setAccessLoading] = useState(false); // NEW
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false); // NEW
+  
+  // NEW: User Role State
+  const [userRole, setUserRole] = useState('editor'); 
+
+  // --- APP STATE ---
   const [fields, setFields] = useState([]); 
   // Change: journeys is now array of objects { name, type }
   const [journeys, setJourneys] = useState([]); 
@@ -38,6 +55,84 @@ function App() {
 
   const dropdownRef = useRef(null);
   const [activeHeadingId, setActiveHeadingId] = useState(null);
+
+  // --- 1. LISTEN FOR AUTH CHANGES ---
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+      setUser(currentUser);
+      
+      if (currentUser) {
+          setAccessLoading(true);
+          try {
+              // 1. Get Admin Team ID
+              const teamsColl = collection(db, "teams");
+              const adminTeamQuery = query(teamsColl, where("label", "==", "Admin"));
+              const adminTeamSnap = await getDocs(adminTeamQuery);
+              let adminTeamId = null;
+              if (!adminTeamSnap.empty) {
+                  adminTeamId = adminTeamSnap.docs[0].id;
+              }
+
+              // 2. Check User Memberships
+              const teamsRef = collection(db, "team_members");
+              const q = query(teamsRef, where("email", "==", currentUser.email));
+              const snapshot = await getDocs(q);
+              
+              const isHardcodedAdmin = currentUser.email === "zak.parkin@gmail.com"; 
+
+              if (!snapshot.empty || isHardcodedAdmin) {
+                  setHasAccess(true);
+              } else {
+                  setHasAccess(false);
+              }
+
+              // 3. Super Admin Check
+              if (isHardcodedAdmin) {
+                  setIsSuperAdmin(true);
+              } else if (adminTeamId && !snapshot.empty) {
+                  const inAdminTeam = snapshot.docs.some(doc => doc.data().teamId === adminTeamId);
+                  setIsSuperAdmin(inAdminTeam);
+              } else {
+                  setIsSuperAdmin(false);
+              }
+
+              // NEW: Fetch User Role from 'users' collection
+              try {
+                  const userDocRef = doc(db, "users", currentUser.uid);
+                  const userSnap = await getDoc(userDocRef);
+                  if (userSnap.exists()) {
+                      const r = userSnap.data().role || 'editor';
+                      setUserRole(r);
+                      // If reader, force preview mode immediately
+                      if (r === 'reader') setMode('Preview');
+                  }
+              } catch (e) {
+                  console.error("Error fetching user role:", e);
+              }
+
+          } catch (e) {
+              console.error("Error checking access:", e);
+              setHasAccess(false); 
+          }
+          setAccessLoading(false);
+      }
+      
+      setAuthLoading(false);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // Define handleLogout HERE, before it's used
+  const handleLogout = () => {
+    signOut(auth).then(() => {
+      setUser(null);
+      setHasAccess(false); 
+      localStorage.clear();
+      window.location.href = '/'; 
+    }).catch(error => {
+      console.error("Error signing out:", error);
+    });
+  };
 
   // Helper to get journey type from local storage safely
   const getJourneyType = (name) => {
@@ -82,7 +177,6 @@ function App() {
     setJourneys(loadedJourneys);
   }, []);
 
-  // Determine current journey type
   const currentJourney = journeys.find(j => j.name === selectedJourney);
   const isAdminMode = currentJourney?.type === 'admin';
 
@@ -121,7 +215,9 @@ function App() {
     }
     setSelectedJourney(journeyName);
     setIsDirty(false); 
-    setMode("Edit"); 
+    
+    // NEW: Respect User Role when loading
+    setMode(userRole === 'reader' ? "Preview" : "Edit"); 
   };
 
   // Navigation Guard Logic
@@ -230,8 +326,67 @@ function App() {
   const standardJourneys = journeys.filter(j => j.type !== 'admin');
   const adminJourneys = journeys.filter(j => j.type === 'admin');
 
+  // --- 2. HANDLE LOADING STATE ---
+  if (authLoading || (user && accessLoading)) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#bdc5c9]">
+        <Loader2 className="animate-spin text-gray-500" size={48} />
+      </div>
+    );
+  }
+
+  // --- 3. SHOW LOGIN IF NO USER ---
+  if (!user) {
+    return <Login />;
+  }
+
+  // --- NEW: ACCESS DENIED SCREEN ---
+  if (!hasAccess) {
+      return (
+          <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-6 text-center relative overflow-hidden font-sans text-slate-200">
+              {/* Subtle Background */}
+              <div className="absolute top-[-20%] left-[-10%] w-[600px] h-[600px] bg-indigo-500/10 rounded-full blur-[120px] pointer-events-none animate-pulse"></div>
+              
+              <div className="relative z-10 max-w-md">
+                  <div className="mb-8 flex justify-center">
+                    <div className="bg-slate-900 p-4 rounded-2xl border border-slate-800 shadow-2xl">
+                        <Shield size={40} className="text-indigo-500" strokeWidth={1.5} />
+                    </div>
+                  </div>
+                  
+                  <h1 className="text-3xl font-bold text-white mb-4 tracking-tight">Access Pending</h1>
+                  
+                  <p className="text-slate-400 text-sm leading-relaxed mb-8 border-b border-slate-800 pb-8">
+                      Your account has been created, but you need to be added to a team before you can access the Form Builder. 
+                      <br/><br/>
+                      Please contact an administrator to grant you access.
+                  </p>
+
+                  <div className="flex flex-col items-center gap-4">
+                      <div className="text-xs font-mono bg-slate-900 py-2 px-4 rounded-full border border-slate-800 text-slate-500">
+                          {user.email}
+                      </div>
+                      
+                      <button 
+                          onClick={handleLogout}
+                          className="flex items-center gap-2 text-xs font-bold text-indigo-400 hover:text-indigo-300 hover:underline mt-4 transition-all"
+                      >
+                          <LogOut size={12} /> Sign Out
+                      </button>
+                  </div>
+              </div>
+          </div>
+      );
+  }
+
+  // --- 4. MAIN APP (If Logged In) ---
+  
   return (
-    <div className="min-h-screen bg-[#bdc5c9] p-6 flex flex-col font-sans relative">
+    <div className="min-h-screen bg-slate-50 flex flex-col font-sans relative overflow-hidden">
+      {/* --- BACKGROUND SHAPES (Subtler version) --- */}
+      <div className="absolute top-[-10%] left-[-5%] w-96 h-96 bg-blue-100/40 rounded-full blur-3xl pointer-events-none"></div>
+      <div className="absolute bottom-[-10%] right-[-5%] w-96 h-96 bg-sky-100/40 rounded-full blur-3xl pointer-events-none"></div>
+
       {/* Backdrop for Dropdown */}
       {isDropdownOpen && (
         <div 
@@ -240,108 +395,114 @@ function App() {
         />
       )}
 
-      {/* Header */}
-      <header className="flex items-center justify-between mb-8 px-4 relative z-50">
-        <div className="text-gray-500 text-3xl font-bold tracking-tight">Google</div>
-        
-        <div className="flex items-center gap-2">
-          <span className="text-gray-800 text-lg mr-2">Journey:</span>
-          
-          <div className="relative" ref={dropdownRef}>
-              <div 
-                onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-                className={`bg-white rounded-md shadow-sm px-4 py-2 min-w-[300px] flex items-center justify-between text-gray-600 cursor-pointer border transition-colors select-none relative
-                    ${isDropdownOpen ? 'border-blue-500 ring-2 ring-blue-100 z-50' : 'border-gray-200 hover:border-gray-300'}
-                `}
-              >
-                {selectedJourney || "Select Journey"}
-                <ChevronDown 
-                    size={16} 
-                    className={`transition-transform duration-200 ${isDropdownOpen ? 'rotate-180' : ''}`} 
-                />
-              </div>
-              
-              {isDropdownOpen && (
-                  <div className="absolute top-full left-0 w-[600px] bg-white mt-2 rounded-xl shadow-2xl border border-gray-100 z-50 overflow-hidden flex animate-in fade-in zoom-in-95 duration-150 origin-top-left">
-                      {/* Left Column: Standard */}
-                      <div className="flex-1 flex flex-col border-r border-gray-100">
-                          <div className="px-4 py-2.5 bg-gray-50 border-b border-gray-100 text-[10px] font-bold text-gray-400 uppercase tracking-wider">
-                              Standard Journeys
-                          </div>
-                          <div className="max-h-[400px] overflow-y-auto p-2 space-y-1 custom-scrollbar">
-                              {standardJourneys.length === 0 ? (
-                                  <div className="p-4 text-center text-gray-400 text-xs italic">No standard journeys</div>
-                              ) : (
-                                  standardJourneys.map(j => (
-                                      <div 
-                                        key={j.name}
-                                        onClick={() => attemptSwitchJourney(j.name)}
-                                        className={`px-3 py-2 rounded-lg cursor-pointer text-sm transition-all border border-transparent
-                                            ${selectedJourney === j.name 
-                                                ? 'bg-gray-100 text-gray-900 font-bold shadow-sm border-gray-200' 
-                                                : 'hover:bg-gray-50 text-gray-600 hover:border-gray-100'}
-                                        `}
-                                      >
-                                          {j.name}
-                                      </div>
-                                  ))
-                              )}
-                          </div>
-                      </div>
-
-                      {/* Right Column: Admin */}
-                      <div className="flex-1 flex flex-col bg-slate-50/50">
-                          <div className="px-4 py-2.5 bg-slate-100/50 border-b border-slate-200/50 text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
-                                <Shield size={10} />
-                                Admin Journeys
-                          </div>
-                          <div className="max-h-[400px] overflow-y-auto p-2 space-y-1 custom-scrollbar">
-                              {adminJourneys.length === 0 ? (
-                                  <div className="p-4 text-center text-slate-400 text-xs italic">No admin journeys</div>
-                              ) : (
-                                  adminJourneys.map(j => (
-                                      <div 
-                                        key={j.name}
-                                        onClick={() => attemptSwitchJourney(j.name)}
-                                        className={`px-3 py-2 rounded-lg cursor-pointer text-sm transition-all border border-transparent flex items-center justify-between group
-                                            ${selectedJourney === j.name 
-                                                ? 'bg-white text-slate-800 font-bold shadow-sm border-slate-200' 
-                                                : 'hover:bg-white text-slate-600 hover:shadow-sm hover:border-slate-100'}
-                                        `}
-                                      >
-                                          <span>{j.name}</span>
-                                          {selectedJourney === j.name && <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />}
-                                      </div>
-                                  ))
-                              )}
-                          </div>
-                      </div>
-                  </div>
-              )}
-          </div>
-
-          <button 
-            onClick={() => setIsAddModalOpen(true)}
-            className="bg-white p-2 rounded-md shadow-sm border border-gray-200 hover:bg-gray-50 text-gray-500 transition-colors"
-            title="Add New Journey"
-          >
-            <Plus size={20} />
-          </button>
-
-          {/* Delete Button - Allowed for ALL journeys now */}
-          {selectedJourney && (
-            <button 
-                onClick={() => setIsDeleteModalOpen(true)}
-                className="bg-white p-2 rounded-md shadow-sm border border-gray-200 hover:bg-red-50 text-red-500 transition-colors ml-1"
-                title="Delete Journey"
-            >
-                <Trash2 size={20} />
-            </button>
-          )}
+      {/* HEADER - ALWAYS VISIBLE */}
+      <header className="flex items-center justify-between mb-2 px-6 pt-6 relative z-50">
+        <div className="flex items-center gap-6">
+             {/* --- NEW LOGO --- */}
+             <div className="text-2xl font-bold tracking-tight text-[#1e293b] font-brand flex items-center gap-2 cursor-default select-none -mt-4">
+                <Layout className="text-blue-600" size={26} strokeWidth={2.5} />
+                FormBuilder
+             </div>
         </div>
+
+        {/* Journey Selector - CENTERED */}
+        <div className="absolute left-1/2 top-6 -translate-x-1/2 flex items-center gap-2">
+            <div className="relative" ref={dropdownRef}>
+                <div 
+                    onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+                    className={`bg-white rounded-xl shadow-[0_6px_12px_-4px_rgba(0,0,0,0.15)] px-4 py-2 min-w-[260px] flex items-center justify-between text-slate-600 cursor-pointer border transition-all select-none relative
+                        ${isDropdownOpen ? 'border-blue-500 ring-2 ring-blue-100 z-50' : 'border-slate-200 hover:border-slate-300 hover:shadow-[0_8px_16px_-4px_rgba(0,0,0,0.2)]'}
+                    `}
+                >
+                    <span className="text-sm font-medium">{selectedJourney || "Select a Journey..."}</span>
+                    <ChevronDown 
+                        size={16} 
+                        className={`transition-transform duration-200 text-slate-400 ${isDropdownOpen ? 'rotate-180 text-blue-500' : ''}`} 
+                    />
+                </div>
+                
+                {isDropdownOpen && (
+                    <div className={`absolute top-full left-1/2 -translate-x-1/2 ${isSuperAdmin ? 'w-[600px]' : 'w-[300px]'} bg-white mt-2 rounded-2xl shadow-2xl border border-slate-100 z-50 overflow-hidden flex animate-in fade-in zoom-in-95 duration-150 origin-top`}>
+                        <div className={`flex-1 flex flex-col ${isSuperAdmin ? 'border-r border-slate-100' : ''}`}>
+                            <div className="px-4 py-3 bg-slate-50 border-b border-slate-100 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                                Standard Journeys
+                            </div>
+                            <div className="max-h-[400px] overflow-y-auto p-2 space-y-1 custom-scrollbar">
+                                {standardJourneys.length === 0 ? (
+                                    <div className="p-8 text-center text-slate-400 text-xs italic">No standard journeys yet</div>
+                                ) : (
+                                    standardJourneys.map(j => (
+                                        <div 
+                                            key={j.name}
+                                            onClick={() => attemptSwitchJourney(j.name)}
+                                            className={`px-3 py-2.5 rounded-lg cursor-pointer text-sm transition-all border border-transparent
+                                                ${selectedJourney === j.name 
+                                                    ? 'bg-blue-50 text-blue-700 font-bold shadow-sm border-blue-100' 
+                                                    : 'hover:bg-slate-50 text-slate-600 hover:border-slate-100'}
+                                            `}
+                                        >
+                                            {j.name}
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+                        </div>
+
+                        {isSuperAdmin && (
+                            <div className="flex-1 flex flex-col bg-slate-50/50">
+                                <div className="px-4 py-3 bg-slate-100/50 border-b border-slate-200/50 text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                                        <Shield size={10} />
+                                        Admin Journeys
+                                </div>
+                                <div className="max-h-[400px] overflow-y-auto p-2 space-y-1 custom-scrollbar">
+                                    {adminJourneys.length === 0 ? (
+                                        <div className="p-8 text-center text-slate-400 text-xs italic">No admin journeys yet</div>
+                                    ) : (
+                                        adminJourneys.map(j => (
+                                            <div 
+                                                key={j.name}
+                                                onClick={() => attemptSwitchJourney(j.name)}
+                                                className={`px-3 py-2.5 rounded-lg cursor-pointer text-sm transition-all border border-transparent flex items-center justify-between group
+                                                    ${selectedJourney === j.name 
+                                                        ? 'bg-white text-slate-800 font-bold shadow-sm border-slate-200' 
+                                                        : 'hover:bg-white text-slate-600 hover:shadow-sm hover:border-slate-100'}
+                                                `}
+                                            >
+                                                <span>{j.name}</span>
+                                                {selectedJourney === j.name && <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />}
+                                            </div>
+                                        ))
+                                    )}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                )}
+            </div>
+
+            {isSuperAdmin && (
+                <button 
+                    onClick={() => setIsAddModalOpen(true)}
+                    className="bg-white p-2.5 rounded-xl shadow-sm border border-slate-200 hover:border-blue-300 hover:text-blue-600 text-slate-400 transition-all"
+                    title="Add New Journey"
+                >
+                    <Plus size={20} />
+                </button>
+            )}
+
+            {isSuperAdmin && selectedJourney && (
+                <button 
+                    onClick={() => setIsDeleteModalOpen(true)}
+                    className="bg-white p-2.5 rounded-xl shadow-sm border border-slate-200 hover:bg-red-50 hover:border-red-200 hover:text-red-500 text-slate-400 transition-all ml-1"
+                    title="Delete Journey"
+                >
+                    <Trash2 size={20} />
+                </button>
+            )}
+         </div>
         
-        <div className="w-[150px] flex justify-end">
-             <AccountSettings />
+        <div className="flex items-center gap-4">
+             <AccountSettings user={user} isSuperAdmin={isSuperAdmin} />
         </div> 
       </header>
 
@@ -434,7 +595,7 @@ function App() {
       )}
 
       {/* Main Grid */}
-      <main className="flex flex-1 gap-6 max-w-[1150px] mx-auto translate-x-[50px] w-full items-start h-[calc(100vh-140px)]">
+      <main className="flex flex-1 gap-6 max-w-[1200px] mx-auto w-full items-start h-[calc(100vh-140px)] px-6 relative z-10">
         
         {selectedJourney ? (
             mode === 'Edit' ? (
@@ -454,8 +615,37 @@ function App() {
                 />
             )
         ) : (
-            <div className="flex-1 bg-white shadow-2xl flex flex-col items-center justify-center rounded-xl h-full text-gray-400">
-                <p className="text-lg font-medium">Select or create a journey to start editing</p>
+            // --- NEW EMPTY STATE ---
+            <div className="flex-1 h-full flex flex-col items-center justify-center text-center p-12">
+                <div className="w-24 h-24 bg-white rounded-3xl shadow-[0_20px_50px_-12px_rgba(0,0,0,0.1)] flex items-center justify-center mb-8 rotate-3 transition-transform hover:rotate-6 duration-500">
+                    <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white shadow-lg">
+                        <Plus size={24} strokeWidth={3} />
+                    </div>
+                </div>
+                <h2 className="text-3xl font-bold text-slate-800 mb-3 tracking-tight">No Journey Selected</h2>
+                <p className="text-slate-500 max-w-md text-sm leading-relaxed mb-8">
+                    Select an existing journey from the dropdown menu above, or create a new one to start building your form workflow.
+                </p>
+                <div className="flex items-center gap-3">
+                    {/* "Open Menu" triggers the same state as clicking the dropdown itself */}
+                    <button 
+                        onClick={(e) => { e.stopPropagation(); setIsDropdownOpen(true); }}
+                        className="px-5 py-2.5 bg-white border border-slate-200 text-slate-700 font-bold text-xs rounded-xl shadow-sm hover:border-slate-300 hover:shadow-md transition-all flex items-center gap-2"
+                    >
+                        <ChevronDown size={14} /> Open Menu
+                    </button>
+                    {isSuperAdmin && (
+                        <button 
+                            onClick={() => setIsAddModalOpen(true)}
+                            className="px-5 py-2.5 bg-blue-600 text-white font-bold text-xs rounded-xl shadow-lg shadow-blue-500/20 hover:bg-blue-700 hover:shadow-xl hover:-translate-y-0.5 transition-all flex items-center gap-2"
+                        >
+                            <Plus size={14} /> Create New
+                        </button>
+                    )}
+                </div>
+                <div className="mt-12 text-[10px] font-medium bg-slate-100/50 text-slate-400 px-4 py-2 rounded-full border border-slate-100 flex items-center gap-2">
+                    <Shield size={12} /> Authenticated as {user.email}
+                </div>
             </div>
         )}
         
@@ -469,6 +659,7 @@ function App() {
                 selectedJourney={selectedJourney}
                 isDirty={isDirty}
                 fields={fields}
+                userRole={userRole} // NEW: Pass the role
             />
         )}
       </main>

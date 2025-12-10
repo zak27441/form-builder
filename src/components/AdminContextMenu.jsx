@@ -17,14 +17,11 @@ const AdminContextMenu = ({
     bold, options, repeaterButtonLabel, 
     onUpdateField,
     onManageConditional,
-    integrations: selectedIntegrations 
+    integrations: selectedIntegrations,
+    availableIntegrations = []
 }) => {
-  const [expandedItem, setExpandedItem] = useState(null);
-  const [showTipTextModal, setShowTipTextModal] = useState(false);
-  const [showOptionsModal, setShowOptionsModal] = useState(false); 
-  const [showRepeaterButtonTextModal, setShowRepeaterButtonTextModal] = useState(false); 
-  const [showIntegrationsModal, setShowIntegrationsModal] = useState(false);
-  const [availableIntegrations, setAvailableIntegrations] = useState([]);
+  // CONSOLIDATED STATE: 'addAbove', 'addBelow', 'changeType', 'options', 'tiptext', 'repeaterButton', 'integrations' or null
+  const [activeSubMenu, setActiveSubMenu] = useState(null);
 
   const menuRef = useRef(null);
 
@@ -35,28 +32,11 @@ const AdminContextMenu = ({
       }
     };
     
-    // CHANGED: Load from localStorage + Listener
-    const loadIntegrations = () => {
-        try {
-            const saved = localStorage.getItem('admin_integrations');
-            if (saved) {
-                setAvailableIntegrations(JSON.parse(saved));
-            } else {
-                setAvailableIntegrations([]);
-            }
-        } catch (e) {
-            console.error("Failed to load integrations", e);
-        }
-    };
-
     if (isOpen) {
       document.addEventListener('mousedown', handleClickOutside);
-      loadIntegrations();
-      window.addEventListener('integrations-updated', loadIntegrations);
     }
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
-      window.removeEventListener('integrations-updated', loadIntegrations);
     };
   }, [isOpen, onClose]);
 
@@ -70,11 +50,19 @@ const AdminContextMenu = ({
     zIndex: 50,
   };
 
-  const MenuItem = ({ icon: Icon, label, hasSubmenu, action, className, onClick }) => (
+  // Helper to check if this item's submenu is active
+  const isSubMenuActive = (menuKey) => activeSubMenu === menuKey;
+
+  // Toggle helper
+  const toggleSubMenu = (menuKey) => {
+      setActiveSubMenu(prev => prev === menuKey ? null : menuKey);
+  };
+
+  const MenuItem = ({ icon: Icon, label, hasSubmenu, action, className, onClick, menuKey }) => (
     <div 
       className={cn(
         "relative px-4 py-2 cursor-pointer flex items-center justify-between text-sm text-gray-700 hover:bg-gray-100 transition-colors",
-        expandedItem === label && "bg-gray-100",
+        menuKey && isSubMenuActive(menuKey) && "bg-gray-100",
         className
       )}
       onClick={(e) => {
@@ -83,8 +71,8 @@ const AdminContextMenu = ({
             onClick();
             return;
         }
-        if (hasSubmenu) {
-          setExpandedItem(expandedItem === label ? null : label);
+        if (hasSubmenu && menuKey) {
+            toggleSubMenu(menuKey);
         } else if (action) {
           action();
         }
@@ -94,7 +82,7 @@ const AdminContextMenu = ({
         {Icon && <Icon size={16} />}
         <span>{label}</span>
       </div>
-      {hasSubmenu && expandedItem === label && (
+      {hasSubmenu && menuKey && isSubMenuActive(menuKey) && (
         <div className="absolute left-full top-0 ml-2 bg-white rounded-lg shadow-xl border border-gray-200 w-48 py-2 z-50 max-h-[300px] overflow-y-auto">
            {FIELD_TYPES.map(type => (
              <div 
@@ -182,12 +170,28 @@ const AdminContextMenu = ({
         </div>
 
         <div className="mx-2 mb-1 bg-gray-100 rounded-md overflow-visible relative"> 
-            <MenuItem icon={ArrowUp} label="Add field above" hasSubmenu className="hover:bg-gray-200 rounded-t-md" />
+            <MenuItem 
+                icon={ArrowUp} 
+                label="Add field above" 
+                hasSubmenu 
+                menuKey="addAbove"
+                className="hover:bg-gray-200 rounded-t-md" 
+            />
             <div className="h-px bg-gray-200 w-full" />
-            <MenuItem icon={ArrowDown} label="Add field below" hasSubmenu className="hover:bg-gray-200 rounded-b-md" />
+            <MenuItem 
+                icon={ArrowDown} 
+                label="Add field below" 
+                hasSubmenu 
+                menuKey="addBelow"
+                className="hover:bg-gray-200 rounded-b-md" 
+            />
         </div>
         
-        <MenuItem label="Change field type" hasSubmenu />
+        <MenuItem 
+            label="Change field type" 
+            hasSubmenu 
+            menuKey="changeType"
+        />
         <MenuItem 
             label="Manage conditional" 
             onClick={() => {
@@ -199,11 +203,11 @@ const AdminContextMenu = ({
         {['dropdown', 'radio buttons', 'checkbox'].includes(selectedType?.toLowerCase()) && (
             <MenuItem 
                 label="Manage options" 
-                onClick={() => setShowOptionsModal(!showOptionsModal)}
-                className={cn(showOptionsModal && "bg-gray-100")}
+                onClick={() => toggleSubMenu('options')}
+                className={cn(isSubMenuActive('options') && "bg-gray-100")}
             />
         )}
-        {showOptionsModal && (
+        {isSubMenuActive('options') && (
             <div className="absolute left-full top-20 ml-2 bg-white rounded-lg shadow-xl border border-gray-100 w-64 p-4 z-50 animate-in fade-in zoom-in-95 duration-100 max-h-[400px] overflow-y-auto">
                  <h3 className="text-xs font-bold text-gray-700 mb-2">Edit Options</h3>
                  <div className="flex flex-col gap-2">
@@ -284,10 +288,10 @@ const AdminContextMenu = ({
         
         <MenuItem 
             label="Manage tiptext" 
-            onClick={() => setShowTipTextModal(!showTipTextModal)}
-            className={cn(showTipTextModal && "bg-gray-100")}
+            onClick={() => toggleSubMenu('tiptext')}
+            className={cn(isSubMenuActive('tiptext') && "bg-gray-100")}
         />
-        {showTipTextModal && (
+        {isSubMenuActive('tiptext') && (
             <div className="absolute left-full top-60 ml-2 bg-white rounded-lg shadow-xl border border-gray-100 w-64 p-4 z-50 animate-in fade-in zoom-in-95 duration-100">
                  <h3 className="text-xs font-bold text-gray-700 mb-2">Edit Tip Text</h3>
                  <textarea 
@@ -312,10 +316,10 @@ const AdminContextMenu = ({
                 
                 <MenuItem 
                     label="Edit button text" 
-                    onClick={() => setShowRepeaterButtonTextModal(!showRepeaterButtonTextModal)}
-                    className={cn(showRepeaterButtonTextModal && "bg-gray-100")}
+                    onClick={() => toggleSubMenu('repeaterButton')}
+                    className={cn(isSubMenuActive('repeaterButton') && "bg-gray-100")}
                 />
-                {showRepeaterButtonTextModal && (
+                {isSubMenuActive('repeaterButton') && (
                     <div className="absolute left-full top-40 ml-2 bg-white rounded-lg shadow-xl border border-gray-100 w-64 p-4 z-50 animate-in fade-in zoom-in-95 duration-100">
                         <h3 className="text-xs font-bold text-gray-700 mb-2">Edit Button Text</h3>
                         <input 
@@ -374,11 +378,11 @@ const AdminContextMenu = ({
             <MenuItem 
                 icon={Settings} 
                 label="Integrations" 
-                onClick={() => setShowIntegrationsModal(!showIntegrationsModal)}
-                className={cn("text-amber-600 hover:bg-amber-50", showIntegrationsModal && "bg-amber-50")}
+                onClick={() => toggleSubMenu('integrations')}
+                className={cn("text-amber-600 hover:bg-amber-50", isSubMenuActive('integrations') && "bg-amber-50")}
             />
             
-            {showIntegrationsModal && (
+            {isSubMenuActive('integrations') && (
                 <div className="absolute left-full bottom-0 ml-2 bg-white rounded-lg shadow-xl border border-gray-200 w-56 p-2 z-50 animate-in fade-in zoom-in-95 duration-100 max-h-[300px] overflow-y-auto">
                     <div className="px-2 py-1 mb-2 border-b border-gray-100 text-[10px] font-bold text-gray-400 uppercase tracking-wider">
                         Select Integrations

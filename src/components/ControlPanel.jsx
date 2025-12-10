@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { Calendar, CheckCircle, Download, FileText, FileSpreadsheet } from 'lucide-react'; 
 import { cn } from '../utils/cn';
 
-const ControlPanel = ({ onSave, mode, setMode, subMode, setSubMode, selectedJourney, isDirty, fields }) => {
+const ControlPanel = ({ onSave, mode, setMode, subMode, setSubMode, selectedJourney, isDirty, fields, userRole }) => {
   const [showToast, setShowToast] = useState(false);
   const [isVisible, setIsVisible] = useState(false);
 
@@ -397,7 +397,11 @@ const ControlPanel = ({ onSave, mode, setMode, subMode, setSubMode, selectedJour
       }
   };
 
-  const modes = ["Edit", "Preview", "Spreadsheet", "JSON"];
+  // NEW: Filter modes based on role
+  const allModes = ["Edit", "Preview", "Spreadsheet", "JSON"];
+  const modes = userRole === 'reader' 
+      ? ["Preview", "Spreadsheet"] 
+      : allModes;
 
   return (
     <div className="w-[200px] py-4 pl-4 flex flex-col gap-6 relative">
@@ -405,13 +409,13 @@ const ControlPanel = ({ onSave, mode, setMode, subMode, setSubMode, selectedJour
       {showToast && createPortal(
         <div 
             className={cn(
-                "fixed top-6 right-6 bg-green-100 border border-green-400 text-green-700 px-4 py-2 rounded shadow-lg flex items-center gap-2 z-[9999]",
-                "transition-all duration-500 ease-in-out transform",
-                isVisible ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-4"
+                "fixed top-6 left-[calc(50%+220px)] bg-green-100 border border-green-400 text-green-700 px-3 py-2 rounded-xl shadow-lg flex items-center gap-2 z-[9999]",
+                "transition-all duration-500 ease-in-out transform origin-left",
+                isVisible ? "opacity-100 scale-100" : "opacity-0 scale-95"
             )}
         >
             <CheckCircle size={16} />
-            <span className="text-sm font-medium">Saved successfully!</span>
+            <span className="text-xs font-bold">Saved!</span>
         </div>,
         document.body
       )}
@@ -535,12 +539,15 @@ const ControlPanel = ({ onSave, mode, setMode, subMode, setSubMode, selectedJour
         </div>
       </div>
 
-      <button 
-        onClick={handleSaveClick}
-        className="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-md shadow-sm transition-colors mt-4"
-      >
-        Save
-      </button>
+      {/* Only show SAVE button if NOT a reader */}
+      {userRole !== 'reader' && (
+          <button 
+            onClick={handleSaveClick}
+            className="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-md shadow-sm transition-colors mt-4"
+          >
+            Save
+          </button>
+      )}
     </div>
   );
 };

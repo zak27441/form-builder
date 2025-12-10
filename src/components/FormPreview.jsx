@@ -279,6 +279,7 @@ const FormPreview = ({ fields, subMode }) => {
       const container = e.target;
       const containerRect = container.getBoundingClientRect();
       const isAtBottom = container.scrollHeight - container.scrollTop <= container.clientHeight + 50;
+      const isAtTop = container.scrollTop < 20; // NEW: Check for top
       
       const collectVisibleHeadings = (list) => {
           let res = [];
@@ -290,6 +291,12 @@ const FormPreview = ({ fields, subMode }) => {
           return res;
       };
       const headingFields = collectVisibleHeadings(fields);
+
+      // NEW: Force first heading if scrolled to top
+      if (isAtTop && headingFields.length > 0) {
+          if (headingFields[0].id !== activeHeadingId) setActiveHeadingId(headingFields[0].id);
+          return;
+      }
 
       if (isAtBottom && headingFields.length > 0) {
           const lastHeading = headingFields[headingFields.length - 1];
@@ -325,7 +332,7 @@ const FormPreview = ({ fields, subMode }) => {
 
   return (
     <div className="flex-1 shadow-2xl flex overflow-hidden relative rounded-xl h-[calc(100vh-140px)] bg-white">
-       <div className="w-[200px] border-r border-gray-100 bg-[#e6e6e6] flex-shrink-0">
+       <div className="w-[200px] border-r border-slate-400 bg-slate-300 flex-shrink-0">
           <TreeNavigation 
             fields={fields} 
             onNavigate={(id) => {

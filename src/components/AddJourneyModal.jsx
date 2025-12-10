@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { X, Upload, FileJson, Image, Copy, FileText, Plus, Filter, Check, ChevronDown, Shield, Layout } from 'lucide-react'; // Added Shield, Layout
+import React, { useState, useEffect, useRef } from 'react'; // Added useRef
+import { X, Upload, FileJson, Image, Copy, FileText, Plus, Filter, Check, ChevronDown, Shield, Layout, Sparkles, AlertTriangle, ArrowRight, ArrowLeft } from 'lucide-react';
 import { cn } from '../utils/cn';
 
 const DEFAULT_FIELDS = [
@@ -7,24 +7,48 @@ const DEFAULT_FIELDS = [
 ];
 
 const AddJourneyModal = ({ isOpen, onClose, onAdd, existingJourneys }) => {
+    // FORM STATE
     const [name, setName] = useState("");
-    const [template, setTemplate] = useState("blank"); // blank, json, image, existing
+    const [journeyType, setJourneyType] = useState("standard");
+    const [template, setTemplate] = useState("blank"); 
+    
+    // TEMPLATE SPECIFIC STATE
     const [jsonFile, setJsonFile] = useState(null);
     const [imageFiles, setImageFiles] = useState([]);
     const [sourceJourney, setSourceJourney] = useState("");
+    
+    // UI STATE
+    const [step, setStep] = useState(1);
     const [error, setError] = useState("");
     const [isDragOver, setIsDragOver] = useState(false);
     
     // Integration Filtering State
     const [adminIntegrations, setAdminIntegrations] = useState([]);
     const [selectedIntegrationFilters, setSelectedIntegrationFilters] = useState([]);
+    const [isFilterMenuOpen, setIsFilterMenuOpen] = useState(false);
+    
+    const filterMenuRef = useRef(null); // Ref for click outside
 
-    // NEW State
-    const [journeyType, setJourneyType] = useState("standard"); // NEW State
+    // Click outside handler for filter menu
+    useEffect(() => {
+        const handleClickOutside = (event) => {
+            if (filterMenuRef.current && !filterMenuRef.current.contains(event.target)) {
+                setIsFilterMenuOpen(false);
+            }
+        };
+
+        if (isFilterMenuOpen) {
+            document.addEventListener('mousedown', handleClickOutside);
+        }
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+        };
+    }, [isFilterMenuOpen]);
 
     // Reset state when modal opens/closes
     useEffect(() => {
         if (!isOpen) {
+            // Reset to defaults
             setName("");
             setTemplate("blank");
             setJsonFile(null);
@@ -33,7 +57,9 @@ const AddJourneyModal = ({ isOpen, onClose, onAdd, existingJourneys }) => {
             setError("");
             setAdminIntegrations([]);
             setSelectedIntegrationFilters([]);
-            setJourneyType("standard"); // Reset type
+            setIsFilterMenuOpen(false);
+            setJourneyType("standard");
+            setStep(1); // Reset to step 1
         }
     }, [isOpen]);
 
@@ -102,13 +128,33 @@ const AddJourneyModal = ({ isOpen, onClose, onAdd, existingJourneys }) => {
         }
     };
 
+    const handleNext = () => {
+        setError("");
+        if (step === 1) {
+            const journeyName = name.trim();
+            if (!journeyName) return setError("Journey name is required.");
+            if (existingJourneys.includes(journeyName)) return setError("Journey name must be unique.");
+            setStep(2);
+        } else if (step === 2) {
+            setStep(3);
+        } else if (step === 3) {
+            if (template === 'blank') {
+                handleSubmit();
+            } else {
+                setStep(4);
+            }
+        }
+    };
+
+    const handleBack = () => {
+        setError("");
+        setStep(prev => prev - 1);
+    };
+
     const handleSubmit = async () => {
         setError("");
         const journeyName = name.trim();
         
-        if (!journeyName) return setError("Journey name is required.");
-        if (existingJourneys.includes(journeyName)) return setError("Journey name must be unique.");
-
         let initialFields = DEFAULT_FIELDS;
 
         try {
@@ -165,8 +211,7 @@ const AddJourneyModal = ({ isOpen, onClose, onAdd, existingJourneys }) => {
 
             // 1. Create Journey
             onAdd(journeyName, initialFields, journeyType);
-            // 2. Close Modal (The parent should likely update state, but we can ensure closing logic here if needed via prop)
-            // Note: App.jsx usually sets setIsAddModalOpen(false) inside onAdd, so this might be redundant but safe if onClose handles state properly.
+            onClose();
             
         } catch (err) {
             setError(err.message || "Failed to process template.");
@@ -179,249 +224,364 @@ const AddJourneyModal = ({ isOpen, onClose, onAdd, existingJourneys }) => {
         );
     };
 
+    // CONDENSED TEMPLATE OPTION (Smaller)
     const TemplateOption = ({ id, icon: Icon, label }) => (
         <div 
             onClick={() => { setTemplate(id); setError(""); }}
-            className={cn(
-                "flex flex-col items-center justify-center p-2 rounded-lg border cursor-pointer transition-all h-16 text-center",
-                template === id 
-                    ? "border-blue-500 bg-blue-50 text-blue-700 shadow-sm" 
-                    : "border-gray-200 hover:border-gray-300 hover:bg-gray-50 text-gray-600"
-            )}
+            className={`
+                flex flex-col items-center justify-center p-2 rounded-xl border cursor-pointer transition-all h-[80px] relative group text-center gap-1.5
+                ${template === id 
+                    ? "border-blue-500 bg-blue-50/50 shadow-md ring-1 ring-blue-500" 
+                    : "border-slate-200 hover:border-slate-300 hover:bg-slate-50 bg-white"}
+            `}
         >
-            <Icon size={16} className="mb-1 opacity-80" />
-            <span className="text-[10px] font-bold">{label}</span>
+            <div className={`p-1.5 rounded-lg transition-colors ${template === id ? 'bg-blue-100 text-blue-600' : 'bg-slate-100 text-slate-500 group-hover:bg-white group-hover:shadow-sm'}`}>
+                <Icon size={18} strokeWidth={2.5} />
+            </div>
+            <span className={`text-[10px] font-bold leading-tight ${template === id ? 'text-blue-700' : 'text-slate-600'}`}>{label}</span>
+            
+            {template === id && (
+                <div className="absolute top-1.5 right-1.5 text-blue-500 animate-in fade-in zoom-in duration-200">
+                    <Check size={12} strokeWidth={3} />
+                </div>
+            )}
         </div>
     );
 
     const allSourceOptions = ['Admin', ...existingJourneys.filter(j => j !== 'Admin')];
 
+    // Determine total steps
+    const totalSteps = template === 'blank' ? 3 : 4;
+
+    // Handle Enter Key
+    const handleKeyDown = (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            if (step === 4 || (step === 3 && template === 'blank')) {
+                handleSubmit();
+            } else {
+                handleNext();
+            }
+        }
+    };
+
     return (
         <div 
-            className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center backdrop-blur-sm"
-            onClick={(e) => {
-                // Close if clicking backdrop
-                if (e.target === e.currentTarget) onClose();
-            }}
+            className="fixed inset-0 bg-slate-900/40 z-[100] flex items-center justify-center backdrop-blur-sm p-4"
+            onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+            onKeyDown={handleKeyDown} // Listen for Enter key
         >
             <div 
-                className="bg-white rounded-lg shadow-2xl p-0 w-[480px] animate-in fade-in zoom-in-95 duration-200 flex flex-col max-h-[90vh] overflow-hidden"
-                onClick={(e) => e.stopPropagation()} // Prevent click from bubbling to backdrop
+                className="bg-white rounded-xl shadow-2xl w-[420px] animate-in fade-in zoom-in-95 duration-200 flex flex-col overflow-visible border border-white/50 transition-all ease-in-out" 
+                onClick={(e) => e.stopPropagation()}
             >
-                <div className="px-4 py-3 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
-                    <h3 className="text-sm font-bold text-gray-800">Create New Journey</h3>
-                    <button onClick={onClose} className="p-1 hover:bg-gray-200 rounded-full transition-colors"><X size={14} className="text-gray-500" /></button>
+                {/* Header */}
+                <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-white/50 shrink-0">
+                    <div className="flex items-center gap-2">
+                        <div className="p-1.5 bg-blue-50 rounded-lg text-blue-600">
+                            <Sparkles size={16} fill="currentColor" className="opacity-20" />
+                        </div>
+                        <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wide">Create Journey</h3>
+                    </div>
+                    <button onClick={onClose} className="p-1 hover:bg-slate-100 rounded-full transition-colors text-slate-400 hover:text-slate-600"><X size={16} /></button>
                 </div>
 
-                <div className="p-4 space-y-4 overflow-y-auto">
-                    {/* Name Input */}
-                    <div>
-                        <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Journey Name</label>
-                        <input 
-                            type="text" 
-                            value={name}
-                            onChange={(e) => setName(e.target.value)}
-                            placeholder="e.g., Mortgage Application v2" 
-                            className="w-full border border-gray-300 rounded px-3 py-1.5 text-xs focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-100 transition-all"
-                            autoFocus
-                        />
-                    </div>
+                {/* Progress Bar - GREEN */}
+                <div className="h-1 w-full bg-slate-100 flex relative shrink-0">
+                    <div 
+                        className="h-full bg-green-500 transition-all duration-300 ease-out absolute left-0"
+                        style={{ width: `${(step / totalSteps) * 100}%` }}
+                    />
+                </div>
 
-                    {/* NEW: Journey Type Selection */}
-                    <div>
-                        <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2">Journey Type</label>
-                        <div className="grid grid-cols-2 gap-2">
-                            <div 
-                                onClick={() => setJourneyType("standard")}
-                                className={cn(
-                                    "flex items-center gap-2 p-2 rounded border cursor-pointer transition-all",
-                                    journeyType === "standard" 
-                                        ? "border-blue-500 bg-blue-50 text-blue-700 shadow-sm" 
-                                        : "border-gray-200 hover:border-gray-300 hover:bg-gray-50 text-gray-600"
-                                )}
-                            >
-                                <div className={cn("w-3 h-3 rounded-full border flex items-center justify-center", journeyType === "standard" ? "border-blue-600 bg-blue-600" : "border-gray-400 bg-white")}>
-                                    {journeyType === "standard" && <div className="w-1 h-1 bg-white rounded-full" />}
-                                </div>
-                                <Layout size={14} className="opacity-80" />
-                                <span className="text-[10px] font-bold">Standard Journey</span>
-                            </div>
-
-                            <div 
-                                onClick={() => setJourneyType("admin")}
-                                className={cn(
-                                    "flex items-center gap-2 p-2 rounded border cursor-pointer transition-all",
-                                    journeyType === "admin" 
-                                        ? "border-purple-500 bg-purple-50 text-purple-700 shadow-sm" 
-                                        : "border-gray-200 hover:border-gray-300 hover:bg-gray-50 text-gray-600"
-                                )}
-                            >
-                                <div className={cn("w-3 h-3 rounded-full border flex items-center justify-center", journeyType === "admin" ? "border-purple-600 bg-purple-600" : "border-gray-400 bg-white")}>
-                                    {journeyType === "admin" && <div className="w-1 h-1 bg-white rounded-full" />}
-                                </div>
-                                <Shield size={14} className="opacity-80" />
-                                <span className="text-[10px] font-bold">Admin Journey</span>
+                {/* NEW: Previous Steps Summary */}
+                {step > 1 && (
+                    <div className="px-6 pt-4 pb-0 flex flex-wrap gap-2 animate-in fade-in slide-in-from-top-2 shrink-0">
+                        <div 
+                            onClick={() => setStep(1)}
+                            className="flex items-center gap-1.5 px-2 py-1 bg-slate-50 border border-slate-200 rounded-md text-[10px] text-slate-600 font-medium cursor-pointer hover:bg-slate-100 hover:border-slate-300 transition-colors group"
+                        >
+                            <span className="opacity-50 font-bold">Name:</span>
+                            <span className="truncate max-w-[80px]">{name}</span>
+                            <div className="w-3 h-3 rounded-full bg-green-100 flex items-center justify-center text-green-600 group-hover:bg-green-200 ml-1">
+                                <Check size={8} strokeWidth={3} />
                             </div>
                         </div>
-                    </div>
 
-                    {/* Template Selection */}
-                    <div>
-                        <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2">Start From</label>
-                        <div className="grid grid-cols-4 gap-2">
-                            <TemplateOption id="blank" icon={FileText} label="Blank" />
-                            <TemplateOption id="json" icon={FileJson} label="JSON" />
-                            <TemplateOption id="image" icon={Image} label="Image/PDF" />
-                            <TemplateOption id="existing" icon={Copy} label="Existing" />
-                        </div>
-                    </div>
-
-                    {/* Dynamic Content Area */}
-                    <div className="min-h-[80px]">
-                        {template === 'json' && (
+                        {step > 2 && (
                             <div 
-                                className={cn(
-                                    "border-2 border-dashed rounded-lg p-3 flex flex-col items-center justify-center text-xs transition-colors h-20",
-                                    isDragOver ? "border-blue-500 bg-blue-50" : "border-gray-200 hover:border-gray-300 hover:bg-gray-50",
-                                    jsonFile ? "bg-green-50 border-green-200" : ""
-                                )}
-                                onDragOver={(e) => { e.preventDefault(); setIsDragOver(true); }}
-                                onDragLeave={() => setIsDragOver(false)}
-                                onDrop={handleDrop}
+                                onClick={() => setStep(2)}
+                                className="flex items-center gap-1.5 px-2 py-1 bg-slate-50 border border-slate-200 rounded-md text-[10px] text-slate-600 font-medium cursor-pointer hover:bg-slate-100 hover:border-slate-300 transition-colors group"
                             >
-                                {jsonFile ? (
-                                    <div className="flex items-center gap-2 text-green-700">
-                                        <FileJson size={16} />
-                                        <span className="font-medium truncate max-w-[200px]">{jsonFile.name}</span>
-                                        <button onClick={() => setJsonFile(null)} className="ml-2 hover:text-red-600"><X size={12}/></button>
-                                    </div>
-                                ) : (
-                                    <div className="flex items-center gap-2">
-                                        <span className="text-gray-500">Drop JSON or</span>
-                                        <label htmlFor="json-upload" className="px-2 py-0.5 bg-white border border-gray-300 rounded text-[10px] font-bold text-gray-600 cursor-pointer hover:bg-gray-50 shadow-sm">Select File</label>
-                                        <input type="file" accept=".json" className="hidden" id="json-upload" onChange={handleFileSelect} />
-                                    </div>
-                                )}
+                                <span className="opacity-50 font-bold">Type:</span>
+                                <span>{journeyType === 'standard' ? 'Standard' : 'Admin'}</span>
+                                <div className="w-3 h-3 rounded-full bg-green-100 flex items-center justify-center text-green-600 group-hover:bg-green-200 ml-1">
+                                    <Check size={8} strokeWidth={3} />
+                                </div>
                             </div>
                         )}
 
-                        {template === 'image' && (
+                        {step > 3 && (
                             <div 
-                                className={cn(
-                                    "border-2 border-dashed rounded-lg p-2 flex flex-col items-center justify-center text-xs transition-colors min-h-[80px]",
-                                    isDragOver ? "border-blue-500 bg-blue-50" : "border-gray-200 hover:border-gray-300 hover:bg-gray-50"
-                                )}
-                                onDragOver={(e) => { e.preventDefault(); setIsDragOver(true); }}
-                                onDragLeave={() => setIsDragOver(false)}
-                                onDrop={handleDrop}
+                                onClick={() => setStep(3)}
+                                className="flex items-center gap-1.5 px-2 py-1 bg-slate-50 border border-slate-200 rounded-md text-[10px] text-slate-600 font-medium cursor-pointer hover:bg-slate-100 hover:border-slate-300 transition-colors group"
                             >
-                                {imageFiles.length > 0 ? (
-                                    <div className="flex flex-wrap gap-1.5 justify-center w-full max-h-[60px] overflow-y-auto custom-scrollbar">
-                                        {imageFiles.map((f, i) => (
-                                            <div key={i} className="bg-white px-1.5 py-0.5 rounded border border-gray-200 flex items-center gap-1 shadow-sm">
-                                                <span className="truncate max-w-[60px] text-[9px]">{f.name}</span>
-                                                <button onClick={() => setImageFiles(files => files.filter((_, idx) => idx !== i))} className="text-gray-400 hover:text-red-500"><X size={10}/></button>
-                                            </div>
-                                        ))}
-                                        <label htmlFor="img-upload" className="px-1.5 py-0.5 bg-gray-100 border border-gray-200 rounded text-[9px] font-bold text-gray-600 cursor-pointer hover:bg-gray-200 flex items-center gap-1">
-                                            <Plus size={8} />
-                                        </label>
-                                    </div>
-                                ) : (
-                                    <div className="flex items-center gap-2">
-                                        <span className="text-gray-500">Drop Images/PDFs or</span>
-                                        <label htmlFor="img-upload" className="px-2 py-0.5 bg-white border border-gray-300 rounded text-[10px] font-bold text-gray-600 cursor-pointer hover:bg-gray-50 shadow-sm">Browse</label>
-                                    </div>
-                                )}
-                                <input type="file" accept="image/*,.pdf" multiple className="hidden" id="img-upload" onChange={handleFileSelect} />
+                                <span className="opacity-50 font-bold">Template:</span>
+                                <span className="capitalize">{template === 'existing' ? 'Clone' : template}</span>
+                                <div className="w-3 h-3 rounded-full bg-green-100 flex items-center justify-center text-green-600 group-hover:bg-green-200 ml-1">
+                                    <Check size={8} strokeWidth={3} />
+                                </div>
                             </div>
                         )}
+                    </div>
+                )}
 
-                        {template === 'existing' && (
-                            <div className="p-3 border border-gray-200 rounded-lg bg-gray-50 flex flex-col justify-center gap-2 min-h-[80px]">
-                                <div>
+                {/* Content - VISIBLE OVERFLOW for Dropdown */}
+                <div className="p-6 space-y-6 bg-slate-50/30 custom-scrollbar h-auto max-h-[60vh] overflow-y-visible"> 
+                    
+                    {/* Step 1: Name */}
+                    {step === 1 && (
+                        <div className="space-y-2 animate-in slide-in-from-right-8 duration-300">
+                            <div className="text-center mb-6">
+                                <h4 className="text-lg font-bold text-slate-800">What's the name of this journey?</h4>
+                                <p className="text-xs text-slate-500 mt-1">Give it a unique, descriptive name.</p>
+                            </div>
+                            <input 
+                                type="text" 
+                                value={name}
+                                onChange={(e) => setName(e.target.value)}
+                                placeholder="e.g. Mortgage Application v2" 
+                                className="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all bg-white shadow-sm placeholder:text-slate-300 font-medium text-slate-700 text-center"
+                                autoFocus
+                            />
+                        </div>
+                    )}
+
+                    {/* Step 2: Type */}
+                    {step === 2 && (
+                        <div className="space-y-4 animate-in slide-in-from-right-8 duration-300">
+                            <div className="text-center mb-2">
+                                <h4 className="text-lg font-bold text-slate-800">Select Journey Type</h4>
+                                <p className="text-xs text-slate-500 mt-1">Is this a standard form or for admin use?</p>
+                            </div>
+                            <div className="grid grid-cols-1 gap-3">
+                                <div 
+                                    onClick={() => setJourneyType("standard")}
+                                    className={`flex items-center gap-4 p-4 rounded-xl border cursor-pointer transition-all ${journeyType === "standard" ? "border-blue-500 bg-blue-50 text-blue-700 shadow-md ring-1 ring-blue-500" : "border-slate-200 hover:border-slate-300 hover:bg-white bg-white text-slate-600"}`}
+                                >
+                                    <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${journeyType === "standard" ? "bg-blue-100 text-blue-600" : "bg-slate-100 text-slate-400"}`}>
+                                        <Layout size={20} />
+                                    </div>
+                                    <div className="flex flex-col text-left">
+                                        <span className="text-sm font-bold">Standard Journey</span>
+                                        <span className="text-[10px] opacity-80 mt-0.5">Regular user facing form workflow</span>
+                                    </div>
+                                    {journeyType === "standard" && <Check size={18} className="ml-auto text-blue-600" strokeWidth={3} />}
+                                </div>
+
+                                <div 
+                                    onClick={() => setJourneyType("admin")}
+                                    className={`flex items-center gap-4 p-4 rounded-xl border cursor-pointer transition-all ${journeyType === "admin" ? "border-purple-500 bg-purple-50 text-purple-700 shadow-md ring-1 ring-purple-500" : "border-slate-200 hover:border-slate-300 hover:bg-white bg-white text-slate-600"}`}
+                                >
+                                    <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${journeyType === "admin" ? "bg-purple-100 text-purple-600" : "bg-slate-100 text-slate-400"}`}>
+                                        <Shield size={20} />
+                                    </div>
+                                    <div className="flex flex-col text-left">
+                                        <span className="text-sm font-bold">Admin Journey</span>
+                                        <span className="text-[10px] opacity-80 mt-0.5">Internal workflow with admin controls</span>
+                                    </div>
+                                    {journeyType === "admin" && <Check size={18} className="ml-auto text-purple-600" strokeWidth={3} />}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Step 3: Start From */}
+                    {step === 3 && (
+                        <div className="space-y-4 animate-in slide-in-from-right-8 duration-300">
+                            <div className="text-center mb-2">
+                                <h4 className="text-lg font-bold text-slate-800">Start From...</h4>
+                                <p className="text-xs text-slate-500 mt-1">Choose a template or start from scratch.</p>
+                            </div>
+                            <div className="grid grid-cols-2 gap-3">
+                                <TemplateOption id="blank" icon={FileText} label="Blank Canvas" />
+                                <TemplateOption id="json" icon={FileJson} label="Upload JSON" />
+                                <TemplateOption id="image" icon={Image} label="Image / PDF" />
+                                <TemplateOption id="existing" icon={Copy} label="Clone Existing" />
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Step 4: Configuration */}
+                    {step === 4 && (
+                        <div className="space-y-4 animate-in slide-in-from-right-8 duration-300">
+                            <div className="text-center mb-4">
+                                <h4 className="text-lg font-bold text-slate-800">
+                                    {template === 'json' ? "Upload Configuration" : template === 'image' ? "Upload Assets" : "Select Source"}
+                                </h4>
+                                <p className="text-xs text-slate-500 mt-1">
+                                    {template === 'json' ? "Upload a valid JSON schema file." : template === 'image' ? "Upload reference images or PDFs." : "Choose a journey to clone."}
+                                </p>
+                            </div>
+                            
+                            {template === 'json' && (
+                                <div 
+                                    className={`border-2 border-dashed rounded-xl p-6 flex flex-col items-center justify-center text-sm transition-colors h-40 ${isDragOver ? "border-blue-500 bg-blue-50" : "border-slate-200 hover:border-slate-300 bg-slate-50/50"} ${jsonFile ? "bg-green-50 border-green-200" : ""}`}
+                                    onDragOver={(e) => { e.preventDefault(); setIsDragOver(true); }}
+                                    onDragLeave={() => setIsDragOver(false)}
+                                    onDrop={handleDrop}
+                                >
+                                    {jsonFile ? (
+                                        <div className="flex flex-col items-center gap-2 text-green-700 font-medium">
+                                            <FileJson size={24} />
+                                            <span className="truncate max-w-[200px] font-bold">{jsonFile.name}</span>
+                                            <button onClick={() => setJsonFile(null)} className="text-xs hover:underline text-green-600">Remove</button>
+                                        </div>
+                                    ) : (
+                                        <div className="flex flex-col items-center gap-2">
+                                            <span className="text-slate-500 text-xs">Drag & drop JSON file here</span>
+                                            <label htmlFor="json-upload" className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-600 cursor-pointer hover:bg-slate-50 shadow-sm">Browse Files</label>
+                                            <input type="file" accept=".json" className="hidden" id="json-upload" onChange={handleFileSelect} />
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {template === 'image' && (
+                                <div 
+                                    className={`border-2 border-dashed rounded-xl p-4 flex flex-col items-center justify-center text-sm transition-colors min-h-[160px] ${isDragOver ? "border-blue-500 bg-blue-50" : "border-slate-200 hover:border-slate-300 bg-slate-50/50"}`}
+                                    onDragOver={(e) => { e.preventDefault(); setIsDragOver(true); }}
+                                    onDragLeave={() => setIsDragOver(false)}
+                                    onDrop={handleDrop}
+                                >
+                                    {imageFiles.length > 0 ? (
+                                        <div className="flex flex-wrap gap-2 justify-center w-full max-h-[120px] overflow-y-auto custom-scrollbar p-2">
+                                            {imageFiles.map((f, i) => (
+                                                <div key={i} className="bg-white px-2 py-1 rounded-md border border-slate-200 flex items-center gap-2 shadow-sm text-xs">
+                                                    <span className="truncate max-w-[100px] font-medium text-slate-600">{f.name}</span>
+                                                    <button onClick={() => setImageFiles(files => files.filter((_, idx) => idx !== i))} className="text-slate-400 hover:text-red-500"><X size={12}/></button>
+                                                </div>
+                                            ))}
+                                            <label htmlFor="img-upload" className="px-2 py-1 bg-blue-50 border border-blue-100 rounded-md text-xs font-bold text-blue-600 cursor-pointer hover:bg-blue-100 flex items-center gap-1">
+                                                <Plus size={12} /> Add
+                                            </label>
+                                        </div>
+                                    ) : (
+                                        <div className="flex flex-col items-center gap-2">
+                                            <span className="text-slate-500 text-xs">Drag images or PDFs here</span>
+                                            <label htmlFor="img-upload" className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-600 cursor-pointer hover:bg-slate-50 shadow-sm">Browse Files</label>
+                                        </div>
+                                    )}
+                                    <input type="file" accept="image/*,.pdf" multiple className="hidden" id="img-upload" onChange={handleFileSelect} />
+                                </div>
+                            )}
+
+                            {template === 'existing' && (
+                                <div className="space-y-4">
                                     <div className="relative">
                                         <select 
-                                            className="w-full p-1.5 border border-gray-300 rounded text-xs appearance-none bg-white focus:outline-none focus:border-blue-500 pr-8"
+                                            className="w-full p-3 border border-slate-200 rounded-xl text-sm font-medium appearance-none bg-white focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 pr-10 shadow-sm text-slate-700"
                                             value={sourceJourney}
                                             onChange={(e) => setSourceJourney(e.target.value)}
                                         >
-                                            <option value="">Select journey to copy...</option>
+                                            <option value="">Select source journey...</option>
                                             {allSourceOptions.map(j => (
                                                 <option key={j} value={j}>{j}</option>
                                             ))}
                                         </select>
-                                        <Copy size={12} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                                        <ChevronDown size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
                                     </div>
-                                </div>
 
-                                {/* Integration Filter for Admin */}
-                                {sourceJourney === 'Admin' && adminIntegrations.length > 0 && (
-                                    <div className="animate-in fade-in slide-in-from-top-1 duration-200">
-                                        <div className="flex items-center gap-1 mb-1.5">
-                                            <Filter size={10} className="text-gray-400" />
-                                            <span className="text-[9px] font-bold text-gray-500 uppercase tracking-wider">Filter by Integration</span>
-                                        </div>
-                                        <div className="flex flex-wrap gap-1.5 max-h-[60px] overflow-y-auto custom-scrollbar">
-                                            {adminIntegrations.map(int => {
-                                                const isSelected = selectedIntegrationFilters.includes(int.id);
-                                                return (
-                                                    <button
-                                                        key={int.id}
-                                                        onClick={() => toggleIntegrationFilter(int.id)}
-                                                        className={cn(
-                                                            "flex items-center gap-1 px-2 py-0.5 rounded border text-[9px] font-bold transition-all select-none",
-                                                            isSelected ? "ring-1 ring-offset-1 shadow-sm" : "opacity-60 hover:opacity-100 bg-white"
+                                    {/* Integration Filter for Admin */}
+                                    {sourceJourney === 'Admin' && adminIntegrations.length > 0 && (
+                                        <div className="animate-in fade-in slide-in-from-top-2 duration-300">
+                                            <div className="relative" ref={filterMenuRef}> 
+                                                <button 
+                                                    onClick={() => setIsFilterMenuOpen(!isFilterMenuOpen)}
+                                                    className="flex items-center justify-between w-full px-3 py-2 border border-slate-200 rounded-xl text-xs bg-white hover:bg-slate-50 transition-colors text-slate-600 font-medium shadow-sm"
+                                                >
+                                                    <div className="flex items-center gap-2">
+                                                        <Filter size={14} />
+                                                        <span>
+                                                            {selectedIntegrationFilters.length === 0 
+                                                                ? "Filter by Integration (Optional)" 
+                                                                : `${selectedIntegrationFilters.length} Integrations Selected`}
+                                                        </span>
+                                                    </div>
+                                                    <ChevronDown size={14} className={cn("transition-transform", isFilterMenuOpen && "rotate-180")} />
+                                                </button>
+
+                                                {isFilterMenuOpen && (
+                                                    <div className="absolute bottom-full left-0 w-full mb-2 bg-white border border-slate-200 rounded-xl shadow-2xl z-[1000] max-h-48 overflow-y-auto custom-scrollbar p-1 animate-in fade-in zoom-in-95 duration-100 origin-bottom">
+                                                        {adminIntegrations.map(int => {
+                                                            const isSelected = selectedIntegrationFilters.includes(int.id);
+                                                            return (
+                                                                <div 
+                                                                    key={int.id}
+                                                                    onClick={() => toggleIntegrationFilter(int.id)}
+                                                                    className={`flex items-center justify-between px-3 py-2 rounded-lg cursor-pointer text-xs mb-0.5 last:mb-0 select-none ${isSelected ? "bg-blue-50" : "hover:bg-slate-50"}`}
+                                                                >
+                                                                    <div className="flex items-center gap-2">
+                                                                        <div className={`w-4 h-4 rounded border flex items-center justify-center transition-all ${isSelected ? "bg-blue-600 border-blue-600" : "border-slate-300 bg-white"}`}>
+                                                                            {isSelected && <Check size={10} className="text-white stroke-[3]" />}
+                                                                        </div>
+                                                                        <span 
+                                                                            className="px-2 py-0.5 rounded text-[10px] font-bold border"
+                                                                            style={{ backgroundColor: int.bg, color: int.text, borderColor: int.border }}
+                                                                        >
+                                                                                {int.label}
+                                                                        </span>
+                                                                    </div>
+                                                                </div>
+                                                            );
+                                                        })}
+                                                        {selectedIntegrationFilters.length > 0 && (
+                                                            <div className="border-t border-slate-100 mt-1 pt-1 p-1">
+                                                                <button 
+                                                                    onClick={() => { setSelectedIntegrationFilters([]); setIsFilterMenuOpen(false); }}
+                                                                    className="w-full text-center py-1 text-[10px] text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors"
+                                                                >
+                                                                    Clear Filters
+                                                                </button>
+                                                            </div>
                                                         )}
-                                                        style={{
-                                                            backgroundColor: isSelected ? int.bg : 'white',
-                                                            color: isSelected ? int.text : 'gray',
-                                                            borderColor: isSelected ? int.border : '#e5e7eb',
-                                                            '--tw-ring-color': int.border
-                                                        }}
-                                                    >
-                                                        {int.label}
-                                                        {isSelected && <Check size={8} strokeWidth={3} />}
-                                                    </button>
-                                                );
-                                            })}
+                                                    </div>
+                                                )}
+                                            </div>
                                         </div>
-                                        <div className="text-[9px] text-gray-400 mt-1 italic">
-                                            {selectedIntegrationFilters.length === 0 
-                                                ? "Copying entire Admin form" 
-                                                : "Copying only fields matching selected integrations"}
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-                        )}
-                        
-                        {template === 'blank' && (
-                            <div className="h-20 flex items-center justify-center text-gray-300 text-xs italic border border-transparent">
-                                Start blank
-                            </div>
-                        )}
-                    </div>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    )}
 
                     {error && (
-                        <div className="bg-red-50 text-red-600 px-3 py-1.5 rounded text-[10px] border border-red-100 flex items-center gap-1.5">
-                            <X size={10} /> {error}
+                        <div className="bg-red-50 text-red-600 px-4 py-3 rounded-xl text-xs border border-red-100 flex items-center gap-2 font-medium animate-in fade-in slide-in-from-top-2">
+                            <AlertTriangle size={16} className="shrink-0" /> {error}
                         </div>
                     )}
                 </div>
 
-                <div className="flex justify-end gap-2 px-4 py-3 border-t border-gray-100 bg-gray-50/50 rounded-b-lg">
+                <div className="flex justify-between items-center px-6 py-4 border-t border-slate-100 bg-white shrink-0 mt-auto relative z-10">
                     <button 
-                        onClick={onClose}
-                        className="px-3 py-1.5 text-gray-500 hover:bg-gray-200 rounded text-xs font-bold transition-colors"
+                        onClick={step === 1 ? onClose : handleBack}
+                        className="px-4 py-2 text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5"
                     >
-                        Cancel
+                        {step === 1 ? "Cancel" : <><ArrowLeft size={14} /> Back</>}
                     </button>
+                    
                     <button 
-                        onClick={handleSubmit}
-                        className="px-4 py-1.5 bg-blue-600 text-white rounded hover:bg-blue-700 text-xs font-bold transition-colors shadow-sm"
+                        onClick={step === 4 || (step === 3 && template === 'blank') ? handleSubmit : handleNext}
+                        className={cn(
+                            "px-5 py-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 text-xs font-bold transition-all shadow-md shadow-blue-500/20 flex items-center gap-2",
+                            "hover:shadow-lg hover:-translate-y-0.5 active:translate-y-0 active:scale-95"
+                        )}
                     >
-                        Create
+                        {step === 4 || (step === 3 && template === 'blank') ? (
+                            <>Create Journey <Plus size={14} /></>
+                        ) : (
+                            <>Next Step <ArrowRight size={14} /></>
+                        )}
                     </button>
                 </div>
             </div>

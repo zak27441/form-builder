@@ -6,6 +6,8 @@ import ContextMenu from './ContextMenu';
 import AdminContextMenu from './AdminContextMenu'; // NEW IMPORT
 import TreeNavigation from './TreeNavigation';
 import { cn } from '../utils/cn';
+import { db } from '../firebase'; // Added db
+import { collection, onSnapshot } from 'firebase/firestore'; // Added imports
 
 const FIELD_TYPES = [
   "Text field", "Currency", "Text area", 
@@ -700,17 +702,13 @@ const FormCanvas = ({ fields, setFields, isAdminJourney }) => { // Accept Prop
   // NEW: Load integrations for Admin Journey
   useEffect(() => {
       if (isAdminJourney) {
-          const loadIntegrations = () => {
-              try {
-                  const saved = localStorage.getItem('admin_integrations');
-                  if (saved) setAdminIntegrations(JSON.parse(saved));
-              } catch (e) { console.error(e); }
-          };
-          
-          loadIntegrations();
-          // Listen for updates from AccountSettings
-          window.addEventListener('integrations-updated', loadIntegrations);
-          return () => window.removeEventListener('integrations-updated', loadIntegrations);
+          const q = collection(db, "integrations");
+          const unsubscribe = onSnapshot(q, (snapshot) => {
+              const loaded = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+              loaded.sort((a, b) => a.label.localeCompare(b.label));
+              setAdminIntegrations(loaded);
+          });
+          return () => unsubscribe();
       }
   }, [isAdminJourney]);
 
@@ -738,6 +736,7 @@ const FormCanvas = ({ fields, setFields, isAdminJourney }) => { // Accept Prop
     const container = e.target;
     const containerRect = container.getBoundingClientRect();
     const isAtBottom = container.scrollHeight - container.scrollTop <= container.clientHeight + 50;
+    const isAtTop = container.scrollTop < 20; // NEW: Check for top
     
     const collectAllHeadings = (list) => {
         let res = [];
@@ -748,6 +747,12 @@ const FormCanvas = ({ fields, setFields, isAdminJourney }) => { // Accept Prop
         return res;
     };
     const headingFields = collectAllHeadings(fields);
+
+    // NEW: Force first heading if scrolled to top
+    if (isAtTop && headingFields.length > 0) {
+        if (headingFields[0].id !== activeHeadingId) setActiveHeadingId(headingFields[0].id);
+        return;
+    }
 
     if (isAtBottom && headingFields.length > 0) {
         const lastHeading = headingFields[headingFields.length - 1];
@@ -770,8 +775,25 @@ const FormCanvas = ({ fields, setFields, isAdminJourney }) => { // Accept Prop
   };
 
   const scrollToField = (fieldId) => {
+    setActiveHeadingId(fieldId); // Immediately set active state
     const element = document.getElementById(`field-${fieldId}`);
-    if (element) element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    if (element) {
+        // Fix: Manually scroll the container to prevent the whole page from moving
+        const container = element.closest('.overflow-y-auto'); 
+        if (container) {
+            const elementRect = element.getBoundingClientRect();
+            const containerRect = container.getBoundingClientRect();
+            const currentScroll = container.scrollTop;
+            
+            // Calculate relative position from the top of the container
+            const relativeTop = elementRect.top - containerRect.top;
+            
+            container.scrollTo({
+                top: currentScroll + relativeTop - 20, // 20px padding
+                behavior: 'smooth'
+            });
+        }
+    }
   };
 
   // Updated Pointer Down to track parent
@@ -1500,7 +1522,8 @@ const FormCanvas = ({ fields, setFields, isAdminJourney }) => { // Accept Prop
                                options={field?.options || []}
                                onUpdateField={handleUpdateField}
                                onManageConditional={handleEnterSelectionMode}
-                               integrations={field?.integrations || []} // Pass field's integrations
+                               integrations={field?.integrations || []} 
+                               availableIntegrations={adminIntegrations} // ADD THIS
                            />
                        );
                     })()}

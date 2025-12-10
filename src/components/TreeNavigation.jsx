@@ -30,9 +30,9 @@ const TreeNavigation = ({ fields = [], onNavigate, activeId, isVisible }) => {
             key={field.id}
             onClick={() => onNavigate(field.id)}
             className={cn(
-                "cursor-pointer truncate transition-all py-1 text-gray-500 hover:text-gray-900 pr-2",
+                "cursor-pointer truncate transition-all py-0.5 pr-3 text-slate-500 hover:text-slate-700 hover:bg-slate-50 rounded-r-md mr-2",
                 activeId === field.id 
-                    ? "font-bold text-sm text-gray-900 bg-gray-100 border-r-2 border-gray-400" 
+                    ? "font-extrabold text-sm text-slate-900" 
                     : "font-medium text-xs"
             )}
             style={{ paddingLeft: `${16 + (field.depth * 12)}px` }}
