@@ -54,6 +54,18 @@ function App() {
   const dropdownRef = useRef(null);
   const [activeHeadingId, setActiveHeadingId] = useState(null);
 
+  // Refs for listener to avoid resubscribing
+  const selectedJourneyRef = useRef(selectedJourney);
+  const isDirtyRef = useRef(isDirty);
+  const fieldsRef = useRef(fields);
+  const isSuperAdminRef = useRef(isSuperAdmin);
+
+  // Update refs
+  useEffect(() => { selectedJourneyRef.current = selectedJourney; }, [selectedJourney]);
+  useEffect(() => { isDirtyRef.current = isDirty; }, [isDirty]);
+  useEffect(() => { fieldsRef.current = fields; }, [fields]);
+  useEffect(() => { isSuperAdminRef.current = isSuperAdmin; }, [isSuperAdmin]);
+
   // --- 1. LISTEN FOR AUTH CHANGES ---
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
@@ -130,22 +142,22 @@ function App() {
     });
   };
 
-  // --- FIREBASE: LOAD JOURNEYS ---
+  // --- FIREBASE: LOAD JOURNEY LISTENER ---
   useEffect(() => {
     if (!user) return;
 
-    // Listen to 'journeys' collection
+    console.log("Subscribing to journeys collection...");
     const q = collection(db, "journeys");
+    
     const unsubscribe = onSnapshot(q, (snapshot) => {
         const loadedJourneys = snapshot.docs.map(doc => ({ 
-            id: doc.id, // Firestore Doc ID
+            id: doc.id, 
             ...doc.data() 
         }));
         
-        // Ensure Admin Journey exists
+        // Ensure Admin Journey exists (using Ref to avoid dep cycle)
         const adminExists = loadedJourneys.some(j => j.name === ADMIN_JOURNEY_NAME);
-        if (!adminExists && isSuperAdmin) {
-            // Create default admin journey if missing
+        if (!adminExists && isSuperAdminRef.current) {
              setDoc(doc(db, "journeys", ADMIN_JOURNEY_NAME), {
                 name: ADMIN_JOURNEY_NAME,
                 fields: DEFAULT_FIELDS,
@@ -164,17 +176,42 @@ function App() {
 
         setJourneys(loadedJourneys);
         
-        // If we are currently viewing a journey, update its fields from the live data
-        // (Optional: this makes it real-time collaborative, but might interrupt editing. 
-        // For now, let's only update the list, but if the selected journey is deleted, handle it)
-        if (selectedJourney && !loadedJourneys.find(j => j.name === selectedJourney)) {
-            setSelectedJourney(null);
-            setFields([]);
+        // SYNC LOGIC: Check if the currently viewed journey was updated remotely
+        const currentSelected = selectedJourneyRef.current;
+        
+        if (currentSelected) {
+            const currentJourneyData = loadedJourneys.find(j => j.name === currentSelected);
+            
+            // Case 1: Journey deleted remotely
+            if (!currentJourneyData) {
+                alert(`The journey "${currentSelected}" has been deleted by another user.`);
+                setSelectedJourney(null);
+                setFields([]);
+                setMode("Edit");
+            } 
+            // Case 2: Journey updated remotely
+            else {
+                 // Only overwrite if we don't have unsaved changes (isDirty)
+                 // OR if we want to implement a "last write wins" or merge strategy.
+                 // For now, we protect the user's unsaved work.
+                 if (!isDirtyRef.current) {
+                     const currentFieldsStr = JSON.stringify(fieldsRef.current);
+                     const newFieldsStr = JSON.stringify(currentJourneyData.fields || []);
+                     
+                     if (currentFieldsStr !== newFieldsStr) {
+                         console.log("Remote update detected, syncing fields...");
+                         setFields(currentJourneyData.fields || []);
+                     }
+                 }
+            }
         }
+    }, (error) => {
+        console.error("Error listening to journeys:", error);
+        alert("Lost connection to the journey list. Please refresh.");
     });
 
     return () => unsubscribe();
-  }, [user, isSuperAdmin, selectedJourney]);
+  }, [user]); // Only re-subscribe if user changes (login/logout)
 
 
   const currentJourney = journeys.find(j => j.name === selectedJourney);
@@ -561,12 +598,12 @@ function App() {
         </div>
       )}
 
-      {/* Add Journey Modal - Pass simplified existingJourneys (names only) */}
+      {/* Add Journey Modal - Pass full journeys for cloning */}
       <AddJourneyModal 
           isOpen={isAddModalOpen} 
           onClose={() => setIsAddModalOpen(false)} 
           onAdd={handleAddJourney}
-          existingJourneys={journeys.map(j => j.name)} 
+          existingJourneys={journeys} 
       />
 
       {/* Delete Journey Modal */}

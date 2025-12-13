@@ -133,7 +133,8 @@ const AddJourneyModal = ({ isOpen, onClose, onAdd, existingJourneys }) => {
         if (step === 1) {
             const journeyName = name.trim();
             if (!journeyName) return setError("Journey name is required.");
-            if (existingJourneys.includes(journeyName)) return setError("Journey name must be unique.");
+            // Check if name exists in the array of journey objects
+            if (existingJourneys.some(j => j.name === journeyName)) return setError("Journey name must be unique.");
             setStep(2);
         } else if (step === 2) {
             setStep(3);
@@ -187,13 +188,11 @@ const AddJourneyModal = ({ isOpen, onClose, onAdd, existingJourneys }) => {
                 initialFields = fields;
 
             } else if (template === 'existing' && sourceJourney) {
-                const data = localStorage.getItem(
-                    sourceJourney === 'Admin' ? 'journey_data_Admin' : `journey_data_${sourceJourney}`
-                );
+                // Find the source journey data from the passed existingJourneys prop
+                const sourceData = existingJourneys.find(j => j.name === sourceJourney);
                 
-                if (data) {
-                    const parsed = JSON.parse(data);
-                    let sourceFields = parsed.fields || DEFAULT_FIELDS;
+                if (sourceData) {
+                    let sourceFields = sourceData.fields || DEFAULT_FIELDS;
 
                     // Filter logic for Admin
                     if (sourceJourney === 'Admin' && selectedIntegrationFilters.length > 0) {
@@ -203,7 +202,8 @@ const AddJourneyModal = ({ isOpen, onClose, onAdd, existingJourneys }) => {
                         initialFields = sourceFields;
                     }
                 } else if (sourceJourney === 'Admin') {
-                    initialFields = DEFAULT_FIELDS; // Fallback
+                    // Fallback if Admin journey not found in list (shouldn't happen if synced properly)
+                    initialFields = DEFAULT_FIELDS; 
                 }
             } else if (template === 'image') {
                 if (imageFiles.length === 0) throw new Error("Please upload at least one image or PDF.");
@@ -248,7 +248,7 @@ const AddJourneyModal = ({ isOpen, onClose, onAdd, existingJourneys }) => {
         </div>
     );
 
-    const allSourceOptions = ['Admin', ...existingJourneys.filter(j => j !== 'Admin')];
+    const allSourceOptions = ['Admin', ...existingJourneys.filter(j => j.name !== 'Admin').map(j => j.name)];
 
     // Determine total steps
     const totalSteps = template === 'blank' ? 3 : 4;
